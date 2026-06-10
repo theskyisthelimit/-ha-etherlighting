@@ -35,8 +35,6 @@ This project is independent, unofficial, and not affiliated with Ubiquiti.
 - RGB light entity for setting one static color on all ports.
 - Number controls for transition speed, animation brightness, and KITT scanner
   tail length.
-- Buttons for quick actions: Network Standard, Cycle All, Cycle Staggered,
-  KITT Scanner, and Stop Cycle.
 - Home Assistant actions for scripts, scenes, dashboards, and automations.
 - Trust-on-first-use SSH host-key handling to avoid silently connecting to a
   changed host key.
@@ -85,18 +83,15 @@ After setup, Etherlighter creates entities similar to:
 | Entity type | Purpose |
 | --- | --- |
 | `select.etherlighter_mode` | Select a predefined UniFi Etherlighting mode. |
-| `select.etherlighter_animation` | Start or stop custom animations. |
-| `light.etherlighter_port_leds` | Set one static RGB color on all ports. |
+| `select.etherlighter_animation` | Start or stop custom animations (`Off`, `Cycle All`, `Cycle Staggered`, `KITT Scanner`). |
+| `light.etherlighter_all_ports` | Set one static RGB color on all ports. |
 | `number.etherlighter_transition_speed` | Adjust animation speed from 1 to 100. |
 | `number.etherlighter_animation_brightness` | Adjust animation brightness from 0 to 100 percent. |
 | `number.etherlighter_scanner_tail` | Adjust the KITT scanner tail length. |
-| `button.etherlighter_network_standard` | Restore the standard network LED mode. |
-| `button.etherlighter_cycle_all` | Start a synchronized color cycle. |
-| `button.etherlighter_cycle_staggered` | Start a per-port staggered color cycle. |
-| `button.etherlighter_kitt_scanner` | Start the red KITT-style scanner. |
-| `button.etherlighter_stop_cycle` | Stop the active animation. |
 
-Entity IDs can differ depending on your Home Assistant naming choices.
+Entity IDs can differ depending on your Home Assistant naming choices. Animations
+(including the KITT scanner) and the standard network mode are started from the
+`Animation` and `Mode` selects above.
 
 ## Actions
 
@@ -194,12 +189,14 @@ Use it at your own risk. The author is not responsible for device issues,
 configuration loss, support problems, or warranty impact caused by using this
 software.
 
-## Legacy Local App
+## Local Debug App
 
-This repository also contains the original standalone local app code. The HACS
-integration does not need the local web server at runtime.
-
-Python local app:
+This repository also contains a standalone local web app (`etherlighter.py`) for
+debugging directly against a switch without Home Assistant. It exposes the same
+controls as the integration: per-port colors, the predefined modes, and the
+`Cycle All`, `Cycle Staggered`, and `KITT Scanner` animations with live sliders
+for transition speed, animation brightness, and KITT scanner tail. The HACS
+integration does not need this local web server at runtime.
 
 ```sh
 python3 -m pip install -r requirements.txt
@@ -208,16 +205,12 @@ python3 etherlighter.py --device <ip> --user <username> --password '<password>'
 
 Then open `http://localhost:8080`.
 
-Go local app:
-
-```sh
-go build
-./etherlighter -device <ip> -user <username>
-```
-
 ## Credits
 
-Etherlighter was inspired by
+Etherlighter is based on
+[`robherley/etherlighter`](https://github.com/robherley/etherlighter), the
+original standalone local app that this Home Assistant integration grew out of,
+and was inspired by
 [`adamjezek98/ubnt-etherlighting`](https://github.com/adamjezek98/ubnt-etherlighting).
 Thanks for the original reverse-engineering work and the idea.
 
