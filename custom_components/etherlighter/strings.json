@@ -71,6 +71,11 @@
       "stop_cycle": {
         "name": "Stop Cycle"
       }
+    },
+    "switch": {
+      "breathing": {
+        "name": "Breathing Effect"
+      }
     }
   },
   "services": {

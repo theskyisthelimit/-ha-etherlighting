@@ -38,6 +38,7 @@ from custom_components.etherlighter.select import (
     EtherlighterAnimationSelect,
     EtherlighterModeSelect,
 )
+from custom_components.etherlighter.switch import EtherlighterBreathingSwitch
 
 
 class FakeCoordinator:
@@ -72,6 +73,13 @@ class FakeCoordinator:
         """Register a coordinator listener."""
 
         return lambda: None
+
+    async def async_set_mode(self, mode: str) -> None:
+        """Record mode changes."""
+
+        self.current_mode = mode
+        self.current_cycle_pattern = None
+        self.light_is_on = False
 
     async def async_set_static_color(
         self, rgb_color: tuple[int, int, int], brightness: int
@@ -157,6 +165,24 @@ def test_stop_cycle_button_stops_animation() -> None:
     assert coordinator.current_cycle_pattern is None
 
 
+def test_breathing_switch_toggles_warm_reset() -> None:
+    coordinator = FakeCoordinator()
+    entity = EtherlighterBreathingSwitch(coordinator)
+    entity.async_write_ha_state = lambda: None
+
+    assert entity.name == "Breathing Effect"
+    assert entity.unique_id == "aa:bb:cc:dd:ee:ff_breathing"
+    assert entity.is_on is False
+
+    asyncio.run(entity.async_turn_on())
+    assert coordinator.current_mode == "warm_reset"
+    assert entity.is_on is True
+
+    asyncio.run(entity.async_turn_off())
+    assert coordinator.current_mode == "network"
+    assert entity.is_on is False
+
+
 def test_number_entities_update_animation_controls() -> None:
     coordinator = FakeCoordinator()
     entities = {
@@ -240,6 +266,7 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
                     ],
                 ),
                 ("button", [EtherlighterButton(coordinator, item) for item in BUTTONS]),
+                ("switch", [EtherlighterBreathingSwitch(coordinator)]),
                 ("light", [EtherlighterLight(coordinator)]),
                 (
                     "number",
@@ -267,6 +294,7 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
                 "select.uswpromax16_mode",
             ]
             assert created["button"] == ["button.uswpromax16_stop_cycle"]
+            assert created["switch"] == ["switch.uswpromax16_breathing_effect"]
             assert created["light"] == ["light.uswpromax16_all_ports"]
             assert created["number"] == [
                 "number.uswpromax16_animation_brightness",

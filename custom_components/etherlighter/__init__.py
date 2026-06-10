@@ -90,7 +90,14 @@ async def async_setup_entry(hass, entry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(
-        entry, [Platform.SELECT, Platform.BUTTON, Platform.LIGHT, Platform.NUMBER]
+        entry,
+        [
+            Platform.SELECT,
+            Platform.BUTTON,
+            Platform.LIGHT,
+            Platform.NUMBER,
+            Platform.SWITCH,
+        ],
     )
     return True
 
@@ -101,7 +108,14 @@ async def async_unload_entry(hass, entry) -> bool:
     from homeassistant.const import Platform
 
     unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, [Platform.SELECT, Platform.BUTTON, Platform.LIGHT, Platform.NUMBER]
+        entry,
+        [
+            Platform.SELECT,
+            Platform.BUTTON,
+            Platform.LIGHT,
+            Platform.NUMBER,
+            Platform.SWITCH,
+        ],
     )
     if unload_ok:
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)

@@ -27,12 +27,16 @@ This project is independent, unofficial, and not affiliated with Ubiquiti.
 - Home Assistant config flow with SSH host, port, username, and password.
 - Device entry with model, hostname, MAC address, and firmware metadata when
   available from the switch.
-- **Mode** select for the built-in UniFi LED status indicators (firmware-driven):
-  `Network`, `Speed`, `PoE`, and `Device Type`.
+- **Mode** select for the built-in UniFi LED behaviors (firmware-driven): the
+  status indicators `Network`, `Speed`, `PoE`, `Device Type`, plus `Cold Reset`
+  (rainbow), `Warm Reset` (breathing), `Boot Done`, `Port Locate`, and
+  `Port Locate Unset`.
 - **Animation** select for the decorative effects this integration renders:
   `Off`, `Static Rainbow` (a frozen per-port rainbow), `Cycle All`, and
   `Cycle Staggered`.
 - RGB light entity for setting one static color on all ports.
+- `Breathing Effect` switch to toggle the built-in white breathing animation
+  (the warm-reset effect) on and off.
 - Number controls for transition speed and animation brightness.
 - `Stop Cycle` button to stop the active animation in one tap.
 - Home Assistant actions for scripts, scenes, dashboards, and automations.
@@ -40,8 +44,10 @@ This project is independent, unofficial, and not affiliated with Ubiquiti.
   changed host key.
 
 > **Mode vs. Animation:** *Mode* selects a built-in UniFi behavior that runs on
-> the switch firmware and reflects real port state. *Animation* is a decorative
-> effect this integration paints over SSH. Picking one clears the other.
+> the switch firmware — the functional status indicators as well as the native
+> reset animations (cold reset = rainbow, warm reset = breathing). *Animation*
+> is a decorative effect this integration paints over SSH. Picking one clears
+> the other.
 >
 > The `KITT Scanner` is implemented but disabled in the UI for now: it is driven
 > frame-by-frame over SSH and stutters on the switch CPU. It can be re-enabled
@@ -90,8 +96,9 @@ After setup, Etherlighter creates entities similar to:
 
 | Entity type | Purpose |
 | --- | --- |
-| `select.etherlighter_mode` | Pick a built-in UniFi LED status mode (`Network`, `Speed`, `PoE`, `Device Type`). |
+| `select.etherlighter_mode` | Pick a built-in UniFi LED mode (status indicators plus the native cold/warm reset animations). |
 | `select.etherlighter_animation` | Pick a decorative effect (`Off`, `Static Rainbow`, `Cycle All`, `Cycle Staggered`). |
+| `switch.etherlighter_breathing_effect` | Toggle the built-in white breathing effect (warm reset). |
 | `light.etherlighter_all_ports` | Set one static RGB color on all ports. |
 | `number.etherlighter_transition_speed` | Adjust animation speed from 1 to 100. |
 | `number.etherlighter_animation_brightness` | Adjust animation brightness from 0 to 100 percent. |

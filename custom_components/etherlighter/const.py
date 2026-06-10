@@ -45,11 +45,10 @@ ANIMATION_KEYS = tuple(ANIMATION_LABELS)
 ANIMATION_KEY_BY_LABEL = {label: key for key, label in ANIMATION_LABELS.items()}
 
 MODE_NETWORK = "network"
-# Full low-level command map. Only the functional status modes are exposed in the
-# UI (see MODE_LABELS); the reset/boot/locate entries stay here for completeness.
+MODE_WARM_RESET = "warm_reset"
 MODE_COMMANDS = {
     "cold_reset": ("0",),
-    "warm_reset": ("1",),
+    MODE_WARM_RESET: ("1",),
     "boot_done": ("2",),
     "speed": ("10", "0"),
     MODE_NETWORK: ("10", "1"),
@@ -59,13 +58,19 @@ MODE_COMMANDS = {
     "port_locate_unset": ("10", "5"),
 }
 
-# "Mode" = built-in UniFi LED status indicators (driven by the firmware). These
-# show real port state and are conceptually distinct from the Animation effects.
+# "Mode" = built-in UniFi LED behaviors driven by the switch firmware: the
+# functional status indicators (network/speed/poe/device_type) plus the native
+# reset animations (cold reset = rainbow, warm reset = white breathing).
 MODE_LABELS = {
     MODE_NETWORK: "Network",
     "speed": "Speed",
     "poe": "PoE",
     "device_type": "Device Type",
+    "cold_reset": "Cold Reset",
+    MODE_WARM_RESET: "Warm Reset",
+    "boot_done": "Boot Done",
+    "port_locate": "Port Locate",
+    "port_locate_unset": "Port Locate Unset",
 }
 
 MODE_KEYS = tuple(MODE_LABELS)
