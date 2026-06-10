@@ -8,7 +8,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, MODE_KEY_BY_LABEL, MODE_LABELS
+from .const import (
+    ANIMATION_KEY_BY_LABEL,
+    ANIMATION_LABELS,
+    ANIMATION_OFF,
+    CYCLE_PATTERNS,
+    DOMAIN,
+    MODE_KEY_BY_LABEL,
+    MODE_LABELS,
+)
 from .coordinator import EtherlighterDataUpdateCoordinator
 from .entity import EtherlighterEntity
 
@@ -21,7 +29,12 @@ async def async_setup_entry(
     """Set up Etherlighter select entities."""
 
     coordinator: EtherlighterDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([EtherlighterModeSelect(coordinator)])
+    async_add_entities(
+        [
+            EtherlighterModeSelect(coordinator),
+            EtherlighterAnimationSelect(coordinator),
+        ]
+    )
 
 
 class EtherlighterModeSelect(EtherlighterEntity, SelectEntity):
@@ -74,4 +87,56 @@ class EtherlighterModeSelect(EtherlighterEntity, SelectEntity):
         """Set the mode and update state."""
 
         await self.coordinator.async_set_mode(mode)
+        self.async_write_ha_state()
+
+
+class EtherlighterAnimationSelect(EtherlighterEntity, SelectEntity):
+    """Animation selector for one Etherlighting device."""
+
+    _attr_translation_key = "animation"
+    _attr_icon = "mdi:animation-play"
+
+    def __init__(self, coordinator: EtherlighterDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "animation", "Animation")
+        self._attr_options = list(ANIMATION_LABELS.values())
+
+    @property
+    def current_option(self) -> str:
+        """Return the currently selected animation."""
+
+        pattern = self.coordinator.current_cycle_pattern or ANIMATION_OFF
+        return ANIMATION_LABELS.get(pattern, ANIMATION_LABELS[ANIMATION_OFF])
+
+    async def async_select_option(self, option: str) -> None:
+        """Change the selected animation from the UI."""
+
+        pattern = ANIMATION_KEY_BY_LABEL.get(option)
+        if pattern is None:
+            raise HomeAssistantError(f"Unsupported Etherlighter animation: {option}")
+        if pattern == ANIMATION_OFF:
+            await self.coordinator.async_stop_cycle()
+        else:
+            await self.coordinator.async_start_animation(pattern)
+        self.async_write_ha_state()
+
+    async def async_service_set_mode(self, mode: str) -> None:
+        """Handle etherlighter.set_mode service action from broad targets."""
+
+        await self.coordinator.async_set_mode(mode)
+        self.async_write_ha_state()
+
+    async def async_service_start_cycle(
+        self, pattern: str, interval: float, brightness: int
+    ) -> None:
+        """Handle etherlighter.start_cycle service action."""
+
+        if pattern not in CYCLE_PATTERNS:
+            raise HomeAssistantError(f"Unsupported Etherlighter animation: {pattern}")
+        await self.coordinator.async_start_cycle(pattern, interval, brightness)
+        self.async_write_ha_state()
+
+    async def async_service_stop_cycle(self) -> None:
+        """Handle etherlighter.stop_cycle service action."""
+
+        await self.coordinator.async_stop_cycle()
         self.async_write_ha_state()

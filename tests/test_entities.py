@@ -22,9 +22,21 @@ from homeassistant.helpers.entity_platform import EntityPlatform
 
 from custom_components.etherlighter.api import DeviceInfo
 from custom_components.etherlighter.button import BUTTONS, BUTTON_NAMES, EtherlighterButton
-from custom_components.etherlighter.const import DOMAIN
+from custom_components.etherlighter.const import (
+    ANIMATION_LABELS,
+    CYCLE_PATTERN_KITT,
+    DOMAIN,
+)
 from custom_components.etherlighter.light import EtherlighterLight
-from custom_components.etherlighter.select import EtherlighterModeSelect
+from custom_components.etherlighter.number import (
+    NUMBER_DESCRIPTIONS,
+    NUMBER_NAMES,
+    EtherlighterNumber,
+)
+from custom_components.etherlighter.select import (
+    EtherlighterAnimationSelect,
+    EtherlighterModeSelect,
+)
 
 
 class FakeCoordinator:
@@ -47,8 +59,13 @@ class FakeCoordinator:
         self.current_rgb_color = (255, 255, 255)
         self.current_brightness = 255
         self.light_is_on = False
+        self.current_cycle_pattern = None
+        self.transition_speed = 50
+        self.animation_brightness = 100
+        self.scanner_tail = 4
         self.last_update_success = True
         self.static_color_calls: list[tuple[tuple[int, int, int], int]] = []
+        self.started_animations: list[str] = []
 
     def async_add_listener(self, *args, **kwargs):
         """Register a coordinator listener."""
@@ -64,6 +81,32 @@ class FakeCoordinator:
         self.current_brightness = brightness
         self.light_is_on = brightness > 0
         self.static_color_calls.append((rgb_color, brightness))
+
+    async def async_start_animation(self, pattern: str) -> None:
+        """Record animation starts."""
+
+        self.current_cycle_pattern = pattern
+        self.started_animations.append(pattern)
+
+    async def async_stop_cycle(self) -> None:
+        """Record animation stop."""
+
+        self.current_cycle_pattern = None
+
+    async def async_set_transition_speed(self, speed: int) -> None:
+        """Record transition speed updates."""
+
+        self.transition_speed = speed
+
+    async def async_set_animation_brightness(self, brightness: int) -> None:
+        """Record animation brightness updates."""
+
+        self.animation_brightness = brightness
+
+    async def async_set_scanner_tail(self, scanner_tail: int) -> None:
+        """Record scanner tail updates."""
+
+        self.scanner_tail = scanner_tail
 
 
 def test_select_entity_has_name_unique_id_and_device_info() -> None:
@@ -85,6 +128,41 @@ def test_button_entities_have_names_and_unique_ids() -> None:
         entity = EtherlighterButton(coordinator, description)
         assert entity.name == BUTTON_NAMES[description.key]
         assert entity.unique_id == f"aa:bb:cc:dd:ee:ff_{description.key}"
+
+
+def test_animation_select_starts_kitt() -> None:
+    coordinator = FakeCoordinator()
+    entity = EtherlighterAnimationSelect(coordinator)
+    entity.async_write_ha_state = lambda: None
+
+    assert entity.name == "Animation"
+    assert entity.unique_id == "aa:bb:cc:dd:ee:ff_animation"
+    assert entity.current_option == ANIMATION_LABELS["off"]
+
+    asyncio.run(entity.async_select_option(ANIMATION_LABELS[CYCLE_PATTERN_KITT]))
+
+    assert coordinator.started_animations == [CYCLE_PATTERN_KITT]
+    assert entity.current_option == ANIMATION_LABELS[CYCLE_PATTERN_KITT]
+
+
+def test_number_entities_update_animation_controls() -> None:
+    coordinator = FakeCoordinator()
+    entities = {
+        description.key: EtherlighterNumber(coordinator, description)
+        for description in NUMBER_DESCRIPTIONS
+    }
+    for entity in entities.values():
+        entity.async_write_ha_state = lambda: None
+
+    assert entities["transition_speed"].name == NUMBER_NAMES["transition_speed"]
+    assert entities["transition_speed"].native_value == 50
+    asyncio.run(entities["transition_speed"].async_set_native_value(75))
+    asyncio.run(entities["animation_brightness"].async_set_native_value(60))
+    asyncio.run(entities["scanner_tail"].async_set_native_value(6))
+
+    assert coordinator.transition_speed == 75
+    assert coordinator.animation_brightness == 60
+    assert coordinator.scanner_tail == 6
 
 
 def test_light_entity_exposes_rgb_color_control() -> None:
@@ -144,9 +222,22 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
 
             created: dict[str, list[str]] = {}
             for domain, entities in [
-                ("select", [EtherlighterModeSelect(coordinator)]),
+                (
+                    "select",
+                    [
+                        EtherlighterModeSelect(coordinator),
+                        EtherlighterAnimationSelect(coordinator),
+                    ],
+                ),
                 ("button", [EtherlighterButton(coordinator, item) for item in BUTTONS]),
                 ("light", [EtherlighterLight(coordinator)]),
+                (
+                    "number",
+                    [
+                        EtherlighterNumber(coordinator, item)
+                        for item in NUMBER_DESCRIPTIONS
+                    ],
+                ),
             ]:
                 platform = EntityPlatform(
                     hass=hass,
@@ -161,14 +252,23 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
                 await platform.async_add_entities(entities)
                 created[domain] = sorted(platform.entities)
 
-            assert created["select"] == ["select.uswpromax16_mode"]
+            assert created["select"] == [
+                "select.uswpromax16_animation",
+                "select.uswpromax16_mode",
+            ]
             assert created["button"] == [
                 "button.uswpromax16_cycle_all",
                 "button.uswpromax16_cycle_staggered",
+                "button.uswpromax16_kitt_scanner",
                 "button.uswpromax16_network_standard",
                 "button.uswpromax16_stop_cycle",
             ]
             assert created["light"] == ["light.uswpromax16_all_ports"]
+            assert created["number"] == [
+                "number.uswpromax16_animation_brightness",
+                "number.uswpromax16_scanner_tail",
+                "number.uswpromax16_transition_speed",
+            ]
             assert len(dr.async_get(hass).devices) == 1
             await hass.async_stop()
 

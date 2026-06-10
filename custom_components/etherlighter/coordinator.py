@@ -18,9 +18,34 @@ from .api import (
     EtherlighterError,
     HostKeyMismatch,
 )
-from .const import DOMAIN, MODE_COMMANDS
+from .const import (
+    DEFAULT_CYCLE_STEPS,
+    DEFAULT_CYCLE_BRIGHTNESS,
+    DEFAULT_SCANNER_TAIL,
+    DEFAULT_TRANSITION_SPEED,
+    DOMAIN,
+    MODE_COMMANDS,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def transition_speed_to_interval(speed: int) -> float:
+    """Map user-facing speed 1..100 to frame interval seconds."""
+
+    speed = max(1, min(100, round(speed)))
+    if speed <= 50:
+        return round(1.0 - ((speed - 1) / 49) * 0.8, 3)
+    return round(0.2 - ((speed - 50) / 50) * 0.15, 3)
+
+
+def interval_to_transition_speed(interval: float) -> int:
+    """Map frame interval seconds back to user-facing speed 1..100."""
+
+    interval = max(0.05, min(1.0, interval))
+    if interval >= 0.2:
+        return round(1 + ((1.0 - interval) / 0.8) * 49)
+    return round(50 + ((0.2 - interval) / 0.15) * 50)
 
 
 class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
@@ -42,6 +67,9 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
         self.current_rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.current_brightness: int = 255
         self.light_is_on = False
+        self.transition_speed = DEFAULT_TRANSITION_SPEED
+        self.animation_brightness = DEFAULT_CYCLE_BRIGHTNESS
+        self.scanner_tail = DEFAULT_SCANNER_TAIL
 
     async def _async_update_data(self) -> DeviceInfo:
         try:
@@ -67,11 +95,31 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
     ) -> None:
         """Start an Etherlighter color cycle."""
 
+        self.transition_speed = interval_to_transition_speed(interval)
+        self.animation_brightness = brightness
         await self.hass.async_add_executor_job(
             self.api.start_color_cycle,
             pattern,
             interval,
             brightness,
+            DEFAULT_CYCLE_STEPS,
+            self.scanner_tail,
+        )
+        self.current_mode = None
+        self.current_cycle_pattern = pattern
+        self.light_is_on = True
+        self.async_set_updated_data(self.data)
+
+    async def async_start_animation(self, pattern: str) -> None:
+        """Start an animation with current UI control values."""
+
+        await self.hass.async_add_executor_job(
+            self.api.start_color_cycle,
+            pattern,
+            transition_speed_to_interval(self.transition_speed),
+            self.animation_brightness,
+            DEFAULT_CYCLE_STEPS,
+            self.scanner_tail,
         )
         self.current_mode = None
         self.current_cycle_pattern = pattern
@@ -83,6 +131,45 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
 
         await self.hass.async_add_executor_job(self.api.stop_color_cycle)
         self.current_cycle_pattern = None
+        self.async_set_updated_data(self.data)
+
+    async def async_set_transition_speed(self, speed: int) -> None:
+        """Set animation speed and update any running animation."""
+
+        self.transition_speed = max(1, min(100, round(speed)))
+        if self.current_cycle_pattern is not None:
+            await self.hass.async_add_executor_job(
+                self.api.update_color_cycle_settings,
+                transition_speed_to_interval(self.transition_speed),
+                None,
+                None,
+            )
+        self.async_set_updated_data(self.data)
+
+    async def async_set_animation_brightness(self, brightness: int) -> None:
+        """Set animation brightness and update any running animation."""
+
+        self.animation_brightness = max(0, min(100, round(brightness)))
+        if self.current_cycle_pattern is not None:
+            await self.hass.async_add_executor_job(
+                self.api.update_color_cycle_settings,
+                None,
+                self.animation_brightness,
+                None,
+            )
+        self.async_set_updated_data(self.data)
+
+    async def async_set_scanner_tail(self, scanner_tail: int) -> None:
+        """Set KITT scanner tail length and update any running animation."""
+
+        self.scanner_tail = max(1, min(8, round(scanner_tail)))
+        if self.current_cycle_pattern is not None:
+            await self.hass.async_add_executor_job(
+                self.api.update_color_cycle_settings,
+                None,
+                None,
+                self.scanner_tail,
+            )
         self.async_set_updated_data(self.data)
 
     async def async_set_static_color(

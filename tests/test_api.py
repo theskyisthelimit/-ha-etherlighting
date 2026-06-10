@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from custom_components.etherlighter.api import (
+    AnimationSettings,
     Color,
     EtherlighterClient,
     EtherlighterError,
@@ -11,7 +12,7 @@ from custom_components.etherlighter.api import (
     color_from_hue,
     host_key_fingerprint,
 )
-from custom_components.etherlighter.const import CYCLE_PATTERN_OFFSET
+from custom_components.etherlighter.const import CYCLE_PATTERN_KITT, CYCLE_PATTERN_OFFSET
 
 
 class FakeKey:
@@ -128,6 +129,65 @@ def test_offset_cycle_frame_sets_each_port_to_different_color() -> None:
     remembered = [color for _, color in sorted(client._last_port_colors.items())]
     assert len(remembered) == 4
     assert len(set(remembered)) == 4
+
+
+def test_kitt_cycle_frame_has_ping_pong_tail() -> None:
+    client = FakeClient()
+
+    frame = client._kitt_port_colors([1, 2, 3, 4], step=1, scanner_tail=2)
+    assert [(item.index, item.color) for item in frame] == [
+        (1, Color(170, 0, 0)),
+        (2, Color(255, 0, 0)),
+        (3, Color(0, 0, 0)),
+        (4, Color(0, 0, 0)),
+    ]
+
+    reverse_frame = client._kitt_port_colors([1, 2, 3, 4], step=4, scanner_tail=2)
+    assert [(item.index, item.color) for item in reverse_frame] == [
+        (1, Color(0, 0, 0)),
+        (2, Color(0, 0, 0)),
+        (3, Color(255, 0, 0)),
+        (4, Color(170, 0, 0)),
+    ]
+
+
+def test_kitt_cycle_frame_respects_brightness() -> None:
+    client = FakeClient()
+
+    frame = client._kitt_port_colors(
+        [1, 2, 3, 4],
+        step=1,
+        scanner_tail=2,
+        brightness=50,
+    )
+
+    assert [(item.index, item.color) for item in frame] == [
+        (1, Color(85, 0, 0)),
+        (2, Color(128, 0, 0)),
+        (3, Color(0, 0, 0)),
+        (4, Color(0, 0, 0)),
+    ]
+
+
+def test_animation_settings_update_live_values() -> None:
+    client = FakeClient()
+    client._animation_settings = AnimationSettings(
+        pattern=CYCLE_PATTERN_KITT,
+        interval_seconds=0.2,
+        brightness=100,
+        steps=96,
+        scanner_tail=4,
+    )
+
+    client.update_color_cycle_settings(
+        interval_seconds=0.1,
+        brightness=45,
+        scanner_tail=6,
+    )
+
+    assert client._animation_settings.interval_seconds == 0.1
+    assert client._animation_settings.brightness == 45
+    assert client._animation_settings.scanner_tail == 6
 
 
 def test_all_ports_color_command() -> None:

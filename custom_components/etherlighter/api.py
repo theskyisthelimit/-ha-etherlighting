@@ -12,10 +12,12 @@ from typing import Any
 
 from .const import (
     CYCLE_PATTERN_ALL,
+    CYCLE_PATTERN_KITT,
     CYCLE_PATTERN_OFFSET,
     DEFAULT_CYCLE_BRIGHTNESS,
     DEFAULT_CYCLE_INTERVAL,
     DEFAULT_CYCLE_STEPS,
+    DEFAULT_SCANNER_TAIL,
     MODE_COMMANDS,
 )
 
@@ -85,6 +87,17 @@ class ConnectionResult:
     host_key_fingerprint: str
 
 
+@dataclass
+class AnimationSettings:
+    """Mutable animation settings read by the animation thread."""
+
+    pattern: str
+    interval_seconds: float
+    brightness: int
+    steps: int
+    scanner_tail: int
+
+
 def to_range(start: int, end: int, skip: int) -> tuple[int, ...]:
     """Generate a range of integers, inclusive, with a skip value."""
 
@@ -110,6 +123,17 @@ def color_from_hue(hue: float) -> Color:
 
     r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
     return Color(r=round(r * 255), g=round(g * 255), b=round(b * 255))
+
+
+def scale_color(color: Color, brightness: int) -> Color:
+    """Scale an RGB color by brightness in percent."""
+
+    factor = brightness / 100
+    return Color(
+        r=round(color.r * factor),
+        g=round(color.g * factor),
+        b=round(color.b * factor),
+    )
 
 
 def host_key_fingerprint(key: Any) -> str:
@@ -163,7 +187,7 @@ class EtherlighterClient:
         self._animation_lock = threading.Lock()
         self._animation_stop: threading.Event | None = None
         self._animation_thread: threading.Thread | None = None
-        self._animation_pattern: str | None = None
+        self._animation_settings: AnimationSettings | None = None
 
     @property
     def host_key_fingerprint(self) -> str | None:
@@ -319,34 +343,83 @@ class EtherlighterClient:
         interval_seconds: float = DEFAULT_CYCLE_INTERVAL,
         brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
         steps: int = DEFAULT_CYCLE_STEPS,
+        scanner_tail: int = DEFAULT_SCANNER_TAIL,
     ) -> None:
         """Start a background color animation."""
 
-        if not 0.05 <= interval_seconds <= 5:
-            raise EtherlighterError("Interval must be between 0.05 and 5 seconds")
-        if not 0 <= brightness <= 100:
-            raise EtherlighterError("Brightness must be between 0 and 100")
         if not 1 <= steps <= 720:
             raise EtherlighterError("Steps must be between 1 and 720")
-        if pattern not in {CYCLE_PATTERN_ALL, CYCLE_PATTERN_OFFSET}:
-            raise EtherlighterError("Pattern must be either all or offset")
-        if pattern == CYCLE_PATTERN_OFFSET and not self._animation_ports():
-            raise EtherlighterError("Cannot run offset cycle without a known port layout")
+        if pattern not in {CYCLE_PATTERN_ALL, CYCLE_PATTERN_OFFSET, CYCLE_PATTERN_KITT}:
+            raise EtherlighterError("Pattern must be all, offset, or kitt")
+        if (
+            pattern in {CYCLE_PATTERN_OFFSET, CYCLE_PATTERN_KITT}
+            and not self._animation_ports()
+        ):
+            raise EtherlighterError(
+                "Cannot run per-port animation without a known port layout"
+            )
 
         self.stop_color_cycle()
+        settings = AnimationSettings(
+            pattern=pattern,
+            interval_seconds=self._validate_interval(interval_seconds),
+            brightness=self._validate_brightness(brightness),
+            steps=steps,
+            scanner_tail=self._validate_scanner_tail(scanner_tail),
+        )
 
         stop_event = threading.Event()
         thread = threading.Thread(
             target=self._run_color_cycle,
-            args=(stop_event, pattern, interval_seconds, brightness, steps),
+            args=(stop_event,),
             daemon=True,
             name=f"etherlighter-{self.host}-cycle",
         )
         with self._animation_lock:
             self._animation_stop = stop_event
             self._animation_thread = thread
-            self._animation_pattern = pattern
+            self._animation_settings = settings
         thread.start()
+
+    def update_color_cycle_settings(
+        self,
+        interval_seconds: float | None = None,
+        brightness: int | None = None,
+        scanner_tail: int | None = None,
+    ) -> None:
+        """Update settings read by the running color animation."""
+
+        with self._animation_lock:
+            settings = self._animation_settings
+            if settings is None:
+                return
+            if interval_seconds is not None:
+                settings.interval_seconds = self._validate_interval(interval_seconds)
+            if brightness is not None:
+                settings.brightness = self._validate_brightness(brightness)
+            if scanner_tail is not None:
+                settings.scanner_tail = self._validate_scanner_tail(scanner_tail)
+
+    def _validate_interval(self, interval_seconds: float) -> float:
+        """Validate and return animation interval in seconds."""
+
+        if not 0.05 <= interval_seconds <= 5:
+            raise EtherlighterError("Interval must be between 0.05 and 5 seconds")
+        return interval_seconds
+
+    def _validate_brightness(self, brightness: int) -> int:
+        """Validate and return animation brightness in percent."""
+
+        if not 0 <= brightness <= 100:
+            raise EtherlighterError("Brightness must be between 0 and 100")
+        return brightness
+
+    def _validate_scanner_tail(self, scanner_tail: int) -> int:
+        """Validate and return scanner tail length."""
+
+        if not 1 <= scanner_tail <= 8:
+            raise EtherlighterError("Scanner tail must be between 1 and 8")
+        return scanner_tail
 
     def stop_color_cycle(self) -> bool:
         """Stop the current color animation."""
@@ -359,7 +432,7 @@ class EtherlighterClient:
             with self._animation_lock:
                 self._animation_stop = None
                 self._animation_thread = None
-                self._animation_pattern = None
+                self._animation_settings = None
             return False
 
         stop_event.set()
@@ -370,17 +443,13 @@ class EtherlighterClient:
             if self._animation_thread is thread:
                 self._animation_stop = None
                 self._animation_thread = None
-                self._animation_pattern = None
+                self._animation_settings = None
 
         return True
 
     def _run_color_cycle(
         self,
         stop_event: threading.Event,
-        pattern: str,
-        interval_seconds: float,
-        brightness: int,
-        steps: int,
     ) -> None:
         """Run a color animation until stopped."""
 
@@ -388,17 +457,45 @@ class EtherlighterClient:
             self.set_led_mode(0)
             step = 0
             while not stop_event.is_set():
-                if pattern == CYCLE_PATTERN_OFFSET:
-                    self._set_offset_cycle_frame(step, steps)
+                settings = self._animation_settings_snapshot()
+                if settings is None:
+                    break
+                if settings.pattern == CYCLE_PATTERN_OFFSET:
+                    self._set_offset_cycle_frame(
+                        step,
+                        settings.steps,
+                        settings.brightness,
+                    )
+                elif settings.pattern == CYCLE_PATTERN_KITT:
+                    self._set_kitt_cycle_frame(
+                        step,
+                        settings.scanner_tail,
+                        settings.brightness,
+                    )
                 else:
-                    color = color_from_hue((step % steps) / steps)
-                    self._set_all_ports_color(color, brightness)
+                    color = color_from_hue((step % settings.steps) / settings.steps)
+                    self._set_all_ports_color(color, settings.brightness)
                     self._remember_all_ports_color(color)
                 step += 1
-                stop_event.wait(interval_seconds)
+                stop_event.wait(settings.interval_seconds)
         except Exception:
             _LOGGER.exception("Etherlighter color cycle failed")
             stop_event.set()
+
+    def _animation_settings_snapshot(self) -> AnimationSettings | None:
+        """Return a snapshot of animation settings for one frame."""
+
+        with self._animation_lock:
+            if self._animation_settings is None:
+                return None
+            settings = self._animation_settings
+            return AnimationSettings(
+                pattern=settings.pattern,
+                interval_seconds=settings.interval_seconds,
+                brightness=settings.brightness,
+                steps=settings.steps,
+                scanner_tail=settings.scanner_tail,
+            )
 
     def _set_all_ports_color(
         self, color: Color, brightness: int = DEFAULT_CYCLE_BRIGHTNESS
@@ -410,21 +507,88 @@ class EtherlighterClient:
             % (color.r, color.g, color.b, brightness)
         )
 
-    def _set_offset_cycle_frame(self, step: int, steps: int) -> None:
+    def _set_offset_cycle_frame(
+        self,
+        step: int,
+        steps: int,
+        brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
+    ) -> None:
         """Set a single offset color-cycle frame across all known ports."""
 
         ports = self._animation_ports()
         if not ports:
-            raise EtherlighterError("Cannot run offset cycle without a known port layout")
+            raise EtherlighterError(
+                "Cannot run offset cycle without a known port layout"
+            )
 
         port_colors = [
             PortColor(
                 index=port,
-                color=color_from_hue(((step + offset * steps / len(ports)) % steps) / steps),
+                color=scale_color(
+                    color_from_hue(
+                        ((step + offset * steps / len(ports)) % steps) / steps
+                    ),
+                    brightness,
+                ),
             )
             for offset, port in enumerate(ports)
         ]
         self._set_port_colors(port_colors, reset_mode=False)
+
+    def _set_kitt_cycle_frame(
+        self,
+        step: int,
+        scanner_tail: int = DEFAULT_SCANNER_TAIL,
+        brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
+    ) -> None:
+        """Set a single KITT scanner frame across all known ports."""
+
+        ports = self._animation_ports()
+        if not ports:
+            raise EtherlighterError(
+                "Cannot run kitt cycle without a known port layout"
+            )
+        self._set_port_colors(
+            self._kitt_port_colors(ports, step, scanner_tail, brightness),
+            reset_mode=False,
+        )
+
+    def _kitt_port_colors(
+        self,
+        ports: list[int],
+        step: int,
+        scanner_tail: int = DEFAULT_SCANNER_TAIL,
+        brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
+    ) -> list[PortColor]:
+        """Return red KITT scanner colors for one frame."""
+
+        scanner_tail = self._validate_scanner_tail(scanner_tail)
+        brightness = self._validate_brightness(brightness)
+        if len(ports) == 1:
+            head_index = 0
+            direction = 1
+        else:
+            period = (len(ports) - 1) * 2
+            phase = step % period
+            if phase <= len(ports) - 1:
+                head_index = phase
+                direction = 1
+            else:
+                head_index = period - phase
+                direction = -1
+
+        port_colors: list[PortColor] = []
+        for index, port in enumerate(ports):
+            distance = (head_index - index) * direction
+            if distance < 0 or distance > scanner_tail:
+                red = 0
+            elif distance == 0:
+                red = round(255 * brightness / 100)
+            else:
+                fade = (scanner_tail - distance + 1) / (scanner_tail + 1)
+                red = round(255 * brightness * fade / 100)
+            port_colors.append(PortColor(index=port, color=Color(red, 0, 0)))
+        return port_colors
 
     def _set_port_colors(
         self, port_colors: list[PortColor], reset_mode: bool = True

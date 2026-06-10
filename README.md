@@ -40,7 +40,7 @@ Etherlighter is now structured as a HACS-compatible Home Assistant custom integr
    - Username
    - Password from UniFi Device Authentication
 
-The integration creates a mode select entity, an RGB light entity for setting one static color on all ports, and button entities for Network Standard, Cycle All, Cycle Staggered, and Stop Cycle. It also exposes the following Home Assistant actions for automations:
+The integration creates a mode select entity, an animation select entity, an RGB light entity for setting one static color on all ports, number controls for transition speed, animation brightness, and scanner tail length, and button entities for Network Standard, Cycle All, Cycle Staggered, KITT Scanner, and Stop Cycle. It also exposes the following Home Assistant actions for automations:
 
 - `etherlighter.set_mode`
 - `etherlighter.start_cycle`

@@ -49,11 +49,25 @@
     "select": {
       "mode": {
         "name": "Mode"
+      },
+      "animation": {
+        "name": "Animation"
       }
     },
     "light": {
       "all_ports_light": {
         "name": "All Ports"
+      }
+    },
+    "number": {
+      "transition_speed": {
+        "name": "Transition Speed"
+      },
+      "animation_brightness": {
+        "name": "Animation Brightness"
+      },
+      "scanner_tail": {
+        "name": "Scanner Tail"
       }
     },
     "button": {
@@ -65,6 +79,9 @@
       },
       "cycle_staggered": {
         "name": "Cycle Staggered"
+      },
+      "kitt_scanner": {
+        "name": "KITT Scanner"
       },
       "stop_cycle": {
         "name": "Stop Cycle"
@@ -88,7 +105,7 @@
       "fields": {
         "pattern": {
           "name": "Pattern",
-          "description": "Use all for one shared color or offset for staggered per-port colors."
+          "description": "Use all for one shared color, offset for staggered per-port colors, or kitt for a red scanner."
         },
         "interval": {
           "name": "Interval",

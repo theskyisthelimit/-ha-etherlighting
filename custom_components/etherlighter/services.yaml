@@ -32,6 +32,7 @@ start_cycle:
           options:
             - all
             - offset
+            - kitt
     interval:
       default: 0.2
       selector:

@@ -9,9 +9,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CYCLE_PATTERN_ALL,
+    CYCLE_PATTERN_KITT,
     CYCLE_PATTERN_OFFSET,
-    DEFAULT_CYCLE_BRIGHTNESS,
-    DEFAULT_CYCLE_INTERVAL,
     DOMAIN,
     MODE_NETWORK,
 )
@@ -36,6 +35,11 @@ BUTTONS = (
         icon="mdi:gradient-horizontal",
     ),
     ButtonEntityDescription(
+        key="kitt_scanner",
+        translation_key="kitt_scanner",
+        icon="mdi:car-sports",
+    ),
+    ButtonEntityDescription(
         key="stop_cycle",
         translation_key="stop_cycle",
         icon="mdi:stop-circle-outline",
@@ -46,6 +50,7 @@ BUTTON_NAMES = {
     "network": "Network Standard",
     "cycle_all": "Cycle All",
     "cycle_offset": "Cycle Staggered",
+    "kitt_scanner": "KITT Scanner",
     "stop_cycle": "Stop Cycle",
 }
 
@@ -81,16 +86,10 @@ class EtherlighterButton(EtherlighterEntity, ButtonEntity):
         if key == "network":
             await self.coordinator.async_set_mode(MODE_NETWORK)
         elif key == "cycle_all":
-            await self.coordinator.async_start_cycle(
-                CYCLE_PATTERN_ALL,
-                DEFAULT_CYCLE_INTERVAL,
-                DEFAULT_CYCLE_BRIGHTNESS,
-            )
+            await self.coordinator.async_start_animation(CYCLE_PATTERN_ALL)
         elif key == "cycle_offset":
-            await self.coordinator.async_start_cycle(
-                CYCLE_PATTERN_OFFSET,
-                DEFAULT_CYCLE_INTERVAL,
-                DEFAULT_CYCLE_BRIGHTNESS,
-            )
+            await self.coordinator.async_start_animation(CYCLE_PATTERN_OFFSET)
+        elif key == "kitt_scanner":
+            await self.coordinator.async_start_animation(CYCLE_PATTERN_KITT)
         elif key == "stop_cycle":
             await self.coordinator.async_stop_cycle()
