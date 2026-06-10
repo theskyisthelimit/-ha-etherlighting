@@ -21,9 +21,11 @@ from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity_platform import EntityPlatform
 
 from custom_components.etherlighter.api import DeviceInfo
+from custom_components.etherlighter.button import BUTTONS, BUTTON_NAMES, EtherlighterButton
 from custom_components.etherlighter.const import (
     ANIMATION_LABELS,
-    CYCLE_PATTERN_KITT,
+    ANIMATION_RAINBOW,
+    CYCLE_PATTERN_OFFSET,
     DOMAIN,
 )
 from custom_components.etherlighter.light import EtherlighterLight
@@ -61,10 +63,10 @@ class FakeCoordinator:
         self.current_cycle_pattern = None
         self.transition_speed = 50
         self.animation_brightness = 100
-        self.scanner_tail = 4
         self.last_update_success = True
         self.static_color_calls: list[tuple[tuple[int, int, int], int]] = []
         self.started_animations: list[str] = []
+        self.rainbow_calls = 0
 
     def async_add_listener(self, *args, **kwargs):
         """Register a coordinator listener."""
@@ -102,10 +104,13 @@ class FakeCoordinator:
 
         self.animation_brightness = brightness
 
-    async def async_set_scanner_tail(self, scanner_tail: int) -> None:
-        """Record scanner tail updates."""
+    async def async_set_static_rainbow(self) -> None:
+        """Record static rainbow paints."""
 
-        self.scanner_tail = scanner_tail
+        self.rainbow_calls += 1
+        self.current_mode = None
+        self.current_cycle_pattern = ANIMATION_RAINBOW
+        self.light_is_on = True
 
 
 def test_select_entity_has_name_unique_id_and_device_info() -> None:
@@ -120,7 +125,7 @@ def test_select_entity_has_name_unique_id_and_device_info() -> None:
     }
 
 
-def test_animation_select_starts_kitt() -> None:
+def test_animation_select_static_rainbow_and_cycle() -> None:
     coordinator = FakeCoordinator()
     entity = EtherlighterAnimationSelect(coordinator)
     entity.async_write_ha_state = lambda: None
@@ -129,10 +134,27 @@ def test_animation_select_starts_kitt() -> None:
     assert entity.unique_id == "aa:bb:cc:dd:ee:ff_animation"
     assert entity.current_option == ANIMATION_LABELS["off"]
 
-    asyncio.run(entity.async_select_option(ANIMATION_LABELS[CYCLE_PATTERN_KITT]))
+    asyncio.run(entity.async_select_option(ANIMATION_LABELS[ANIMATION_RAINBOW]))
+    assert coordinator.rainbow_calls == 1
+    assert entity.current_option == ANIMATION_LABELS[ANIMATION_RAINBOW]
 
-    assert coordinator.started_animations == [CYCLE_PATTERN_KITT]
-    assert entity.current_option == ANIMATION_LABELS[CYCLE_PATTERN_KITT]
+    asyncio.run(entity.async_select_option(ANIMATION_LABELS[CYCLE_PATTERN_OFFSET]))
+    assert coordinator.started_animations == [CYCLE_PATTERN_OFFSET]
+    assert entity.current_option == ANIMATION_LABELS[CYCLE_PATTERN_OFFSET]
+
+
+def test_stop_cycle_button_stops_animation() -> None:
+    coordinator = FakeCoordinator()
+    coordinator.current_cycle_pattern = "all"
+    [button] = [EtherlighterButton(coordinator, item) for item in BUTTONS]
+    button.async_write_ha_state = lambda: None
+
+    assert button.name == BUTTON_NAMES["stop_cycle"]
+    assert button.unique_id == "aa:bb:cc:dd:ee:ff_stop_cycle"
+
+    asyncio.run(button.async_press())
+
+    assert coordinator.current_cycle_pattern is None
 
 
 def test_number_entities_update_animation_controls() -> None:
@@ -148,11 +170,9 @@ def test_number_entities_update_animation_controls() -> None:
     assert entities["transition_speed"].native_value == 50
     asyncio.run(entities["transition_speed"].async_set_native_value(75))
     asyncio.run(entities["animation_brightness"].async_set_native_value(60))
-    asyncio.run(entities["scanner_tail"].async_set_native_value(6))
 
     assert coordinator.transition_speed == 75
     assert coordinator.animation_brightness == 60
-    assert coordinator.scanner_tail == 6
 
 
 def test_light_entity_exposes_rgb_color_control() -> None:
@@ -219,6 +239,7 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
                         EtherlighterAnimationSelect(coordinator),
                     ],
                 ),
+                ("button", [EtherlighterButton(coordinator, item) for item in BUTTONS]),
                 ("light", [EtherlighterLight(coordinator)]),
                 (
                     "number",
@@ -245,10 +266,10 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
                 "select.uswpromax16_animation",
                 "select.uswpromax16_mode",
             ]
+            assert created["button"] == ["button.uswpromax16_stop_cycle"]
             assert created["light"] == ["light.uswpromax16_all_ports"]
             assert created["number"] == [
                 "number.uswpromax16_animation_brightness",
-                "number.uswpromax16_scanner_tail",
                 "number.uswpromax16_transition_speed",
             ]
             assert len(dr.async_get(hass).devices) == 1

@@ -337,6 +337,27 @@ class EtherlighterClient:
         self._set_all_ports_color(color, brightness)
         self._remember_all_ports_color(color)
 
+    def set_static_rainbow(self, brightness: int = DEFAULT_CYCLE_BRIGHTNESS) -> None:
+        """Paint a frozen rainbow: each port gets a different fixed hue."""
+
+        brightness = self._validate_brightness(brightness)
+        ports = self._animation_ports()
+        if not ports:
+            raise EtherlighterError(
+                "Cannot paint a static rainbow without a known port layout"
+            )
+
+        self.stop_color_cycle()
+        self.set_led_mode(0)
+        port_colors = [
+            PortColor(
+                index=port,
+                color=scale_color(color_from_hue(offset / len(ports)), brightness),
+            )
+            for offset, port in enumerate(ports)
+        ]
+        self._set_port_colors(port_colors, reset_mode=False, force=True)
+
     def start_color_cycle(
         self,
         pattern: str = CYCLE_PATTERN_ALL,

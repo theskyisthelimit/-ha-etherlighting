@@ -65,9 +65,11 @@
       },
       "animation_brightness": {
         "name": "Animation Brightness"
-      },
-      "scanner_tail": {
-        "name": "Scanner Tail"
+      }
+    },
+    "button": {
+      "stop_cycle": {
+        "name": "Stop Cycle"
       }
     }
   },
@@ -88,7 +90,7 @@
       "fields": {
         "pattern": {
           "name": "Pattern",
-          "description": "Use all for one shared color, offset for staggered per-port colors, or kitt for a red scanner."
+          "description": "Use all for one shared color, or offset for staggered per-port colors."
         },
         "interval": {
           "name": "Interval",

@@ -472,6 +472,7 @@
         button.addEventListener("click", async () => {
           const pattern = button.dataset.cycle;
           const enabled = pattern !== "stop";
+          const isStatic = pattern === "rainbow";
 
           try {
             setStatus(enabled ? `Starting ${button.innerText}` : "Stopping cycle");
@@ -481,7 +482,7 @@
               ...animationSettings(),
             });
 
-            if (enabled) {
+            if (enabled && !isStatic) {
               startCyclePreview(pattern);
             } else {
               stopCyclePreview();
@@ -577,6 +578,7 @@
         flex-wrap: wrap;
       "
     >
+      <button data-cycle="rainbow">Static Rainbow</button>
       <button data-cycle="all">Cycle All</button>
       <button data-cycle="offset">Cycle Staggered</button>
       <button data-cycle="kitt">KITT Scanner</button>

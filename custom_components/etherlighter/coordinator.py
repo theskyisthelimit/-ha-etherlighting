@@ -19,6 +19,7 @@ from .api import (
     HostKeyMismatch,
 )
 from .const import (
+    ANIMATION_RAINBOW,
     DEFAULT_CYCLE_STEPS,
     DEFAULT_CYCLE_BRIGHTNESS,
     DEFAULT_SCANNER_TAIL,
@@ -126,6 +127,17 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
         self.light_is_on = True
         self.async_set_updated_data(self.data)
 
+    async def async_set_static_rainbow(self) -> None:
+        """Paint a frozen per-port rainbow at the current animation brightness."""
+
+        await self.hass.async_add_executor_job(
+            self.api.set_static_rainbow, self.animation_brightness
+        )
+        self.current_mode = None
+        self.current_cycle_pattern = ANIMATION_RAINBOW
+        self.light_is_on = True
+        self.async_set_updated_data(self.data)
+
     async def async_stop_cycle(self) -> None:
         """Stop an Etherlighter color cycle."""
 
@@ -150,7 +162,11 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
         """Set animation brightness and update any running animation."""
 
         self.animation_brightness = max(0, min(100, round(brightness)))
-        if self.current_cycle_pattern is not None:
+        if self.current_cycle_pattern == ANIMATION_RAINBOW:
+            await self.hass.async_add_executor_job(
+                self.api.set_static_rainbow, self.animation_brightness
+            )
+        elif self.current_cycle_pattern is not None:
             await self.hass.async_add_executor_job(
                 self.api.update_color_cycle_settings,
                 None,

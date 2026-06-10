@@ -12,6 +12,7 @@ from .const import (
     ANIMATION_KEY_BY_LABEL,
     ANIMATION_LABELS,
     ANIMATION_OFF,
+    ANIMATION_RAINBOW,
     CYCLE_PATTERNS,
     DOMAIN,
     MODE_KEY_BY_LABEL,
@@ -115,6 +116,8 @@ class EtherlighterAnimationSelect(EtherlighterEntity, SelectEntity):
             raise HomeAssistantError(f"Unsupported Etherlighter animation: {option}")
         if pattern == ANIMATION_OFF:
             await self.coordinator.async_stop_cycle()
+        elif pattern == ANIMATION_RAINBOW:
+            await self.coordinator.async_set_static_rainbow()
         else:
             await self.coordinator.async_start_animation(pattern)
         self.async_write_ha_state()

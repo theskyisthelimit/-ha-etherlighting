@@ -44,6 +44,7 @@ CYCLE_PATTERN_ALL = "all"
 CYCLE_PATTERN_OFFSET = "offset"
 CYCLE_PATTERN_KITT = "kitt"
 CYCLE_PATTERNS = (CYCLE_PATTERN_ALL, CYCLE_PATTERN_OFFSET, CYCLE_PATTERN_KITT)
+ANIMATION_RAINBOW = "rainbow"
 
 DEFAULT_CYCLE_INTERVAL = 0.2
 DEFAULT_CYCLE_BRIGHTNESS = 100
@@ -348,6 +349,25 @@ class DeviceClient:
         self.stop_color_cycle()
         self._set_all_ports(color, brightness)
         self._remember_all_ports_color(color)
+
+    def set_static_rainbow(self, brightness: int = DEFAULT_CYCLE_BRIGHTNESS) -> None:
+        """Paint a frozen rainbow: each port gets a different fixed hue."""
+
+        brightness = self._validate_brightness(brightness)
+        ports = self._animation_ports()
+        if not ports:
+            raise RuntimeError("cannot paint a static rainbow without a known port layout")
+
+        self.stop_color_cycle()
+        self.set_led_mode(0)
+        port_colors = [
+            PortColor(
+                index=port,
+                color=scale_color(color_from_hue(offset / len(ports)), brightness),
+            )
+            for offset, port in enumerate(ports)
+        ]
+        self._set_port_colors(port_colors, reset_mode=False, force=True)
 
     def _set_all_ports(self, color: Color, brightness: int = 100) -> None:
         if not 0 <= brightness <= 100:
@@ -832,9 +852,11 @@ class EtherlighterHandler(BaseHTTPRequestHandler):
                     brightness = int(body.get("brightness", DEFAULT_CYCLE_BRIGHTNESS))
                     pattern = str(body.get("pattern", CYCLE_PATTERN_ALL))
                     scanner_tail = int(body.get("scanner_tail", DEFAULT_SCANNER_TAIL))
+                    if pattern == ANIMATION_RAINBOW:
+                        client.set_static_rainbow(brightness)
                     # Same pattern already running: update settings live so the
                     # sliders take effect without restarting the animation.
-                    if client.color_cycle_pattern() == pattern:
+                    elif client.color_cycle_pattern() == pattern:
                         client.update_color_cycle_settings(
                             interval_seconds=interval,
                             brightness=brightness,

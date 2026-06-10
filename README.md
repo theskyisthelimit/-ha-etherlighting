@@ -16,9 +16,9 @@
 
 Etherlighter is a custom Home Assistant integration for UniFi switches with
 Etherlighting LEDs. It lets you switch between the built-in UniFi LED modes,
-set a static all-port RGB color, and run custom animations such as rainbow
-cycles and a KITT-style red scanner directly from the Home Assistant UI or
-from automations.
+set a static all-port RGB color, and run custom effects such as a static
+per-port rainbow and color cycles directly from the Home Assistant UI or from
+automations.
 
 This project is independent, unofficial, and not affiliated with Ubiquiti.
 
@@ -27,17 +27,25 @@ This project is independent, unofficial, and not affiliated with Ubiquiti.
 - Home Assistant config flow with SSH host, port, username, and password.
 - Device entry with model, hostname, MAC address, and firmware metadata when
   available from the switch.
-- Mode select for predefined Etherlighting modes:
-  `network`, `speed`, `poe`, `device_type`, `cold_reset`, `warm_reset`,
-  `boot_done`, `port_locate`, and `port_locate_unset`.
-- Animation select for `Off`, `Cycle All`, `Cycle Staggered`, and
-  `KITT Scanner`.
+- **Mode** select for the built-in UniFi LED status indicators (firmware-driven):
+  `Network`, `Speed`, `PoE`, and `Device Type`.
+- **Animation** select for the decorative effects this integration renders:
+  `Off`, `Static Rainbow` (a frozen per-port rainbow), `Cycle All`, and
+  `Cycle Staggered`.
 - RGB light entity for setting one static color on all ports.
-- Number controls for transition speed, animation brightness, and KITT scanner
-  tail length.
+- Number controls for transition speed and animation brightness.
+- `Stop Cycle` button to stop the active animation in one tap.
 - Home Assistant actions for scripts, scenes, dashboards, and automations.
 - Trust-on-first-use SSH host-key handling to avoid silently connecting to a
   changed host key.
+
+> **Mode vs. Animation:** *Mode* selects a built-in UniFi behavior that runs on
+> the switch firmware and reflects real port state. *Animation* is a decorative
+> effect this integration paints over SSH. Picking one clears the other.
+>
+> The `KITT Scanner` is implemented but disabled in the UI for now: it is driven
+> frame-by-frame over SSH and stutters on the switch CPU. It can be re-enabled
+> later (the smooth, firmware-native animations live under *Mode*).
 
 ## Supported Devices
 
@@ -82,16 +90,14 @@ After setup, Etherlighter creates entities similar to:
 
 | Entity type | Purpose |
 | --- | --- |
-| `select.etherlighter_mode` | Select a predefined UniFi Etherlighting mode. |
-| `select.etherlighter_animation` | Start or stop custom animations (`Off`, `Cycle All`, `Cycle Staggered`, `KITT Scanner`). |
+| `select.etherlighter_mode` | Pick a built-in UniFi LED status mode (`Network`, `Speed`, `PoE`, `Device Type`). |
+| `select.etherlighter_animation` | Pick a decorative effect (`Off`, `Static Rainbow`, `Cycle All`, `Cycle Staggered`). |
 | `light.etherlighter_all_ports` | Set one static RGB color on all ports. |
 | `number.etherlighter_transition_speed` | Adjust animation speed from 1 to 100. |
 | `number.etherlighter_animation_brightness` | Adjust animation brightness from 0 to 100 percent. |
-| `number.etherlighter_scanner_tail` | Adjust the KITT scanner tail length. |
+| `button.etherlighter_stop_cycle` | Stop the active animation. |
 
-Entity IDs can differ depending on your Home Assistant naming choices. Animations
-(including the KITT scanner) and the standard network mode are started from the
-`Animation` and `Mode` selects above.
+Entity IDs can differ depending on your Home Assistant naming choices.
 
 ## Actions
 
@@ -114,7 +120,7 @@ action: etherlighter.start_cycle
 target:
   entity_id: select.etherlighter_animation
 data:
-  pattern: kitt
+  pattern: offset
   interval: 0.2
   brightness: 100
 ```
@@ -123,7 +129,6 @@ Supported `pattern` values:
 
 - `all`
 - `offset`
-- `kitt`
 
 ### Stop Animation
 
@@ -135,10 +140,11 @@ target:
 
 ## Example Automations
 
-Turn the switch LEDs into a red scanner when Home Assistant enters alarm mode:
+Run an attention-grabbing staggered color cycle when Home Assistant enters
+alarm mode:
 
 ```yaml
-alias: Etherlighter alarm scanner
+alias: Etherlighter alarm cycle
 triggers:
   - trigger: state
     entity_id: alarm_control_panel.home
@@ -148,7 +154,7 @@ actions:
     target:
       entity_id: select.etherlighter_animation
     data:
-      pattern: kitt
+      pattern: offset
       interval: 0.12
       brightness: 100
 ```
@@ -192,11 +198,12 @@ software.
 ## Local Debug App
 
 This repository also contains a standalone local web app (`etherlighter.py`) for
-debugging directly against a switch without Home Assistant. It exposes the same
-controls as the integration: per-port colors, the predefined modes, and the
-`Cycle All`, `Cycle Staggered`, and `KITT Scanner` animations with live sliders
-for transition speed, animation brightness, and KITT scanner tail. The HACS
-integration does not need this local web server at runtime.
+debugging directly against a switch without Home Assistant. It exposes per-port
+colors, the predefined modes, a `Static Rainbow`, and the `Cycle All`,
+`Cycle Staggered`, and `KITT Scanner` effects with live sliders for transition
+speed, animation brightness, and KITT scanner tail. The KITT scanner is kept
+here (unlike the integration UI) precisely because it is useful for debugging.
+The HACS integration does not need this local web server at runtime.
 
 ```sh
 python3 -m pip install -r requirements.txt

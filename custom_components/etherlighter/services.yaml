@@ -13,11 +13,6 @@ set_mode:
             - speed
             - poe
             - device_type
-            - cold_reset
-            - warm_reset
-            - boot_done
-            - port_locate
-            - port_locate_unset
 
 start_cycle:
   target:
@@ -32,7 +27,6 @@ start_cycle:
           options:
             - all
             - offset
-            - kitt
     interval:
       default: 0.2
       selector:

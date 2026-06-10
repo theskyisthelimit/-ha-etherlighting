@@ -26,19 +26,27 @@ SERVICE_STOP_CYCLE = "stop_cycle"
 CYCLE_PATTERN_ALL = "all"
 CYCLE_PATTERN_KITT = "kitt"
 CYCLE_PATTERN_OFFSET = "offset"
-CYCLE_PATTERNS = (CYCLE_PATTERN_ALL, CYCLE_PATTERN_OFFSET, CYCLE_PATTERN_KITT)
+# KITT is implemented in the engine but disabled in the UI for now: its
+# host-driven per-frame SSH writes stutter. Keep it out of the exposed/service
+# pattern set so it is not selectable, but leave the constant + engine intact.
+CYCLE_PATTERNS = (CYCLE_PATTERN_ALL, CYCLE_PATTERN_OFFSET)
 
 ANIMATION_OFF = "off"
+ANIMATION_RAINBOW = "rainbow"
+# "Animation" = decorative effects we render ourselves. Static Rainbow paints a
+# frozen per-port rainbow; the Cycle entries animate. (KITT omitted for now.)
 ANIMATION_LABELS = {
     ANIMATION_OFF: "Off",
+    ANIMATION_RAINBOW: "Static Rainbow",
     CYCLE_PATTERN_ALL: "Cycle All",
     CYCLE_PATTERN_OFFSET: "Cycle Staggered",
-    CYCLE_PATTERN_KITT: "KITT Scanner",
 }
 ANIMATION_KEYS = tuple(ANIMATION_LABELS)
 ANIMATION_KEY_BY_LABEL = {label: key for key, label in ANIMATION_LABELS.items()}
 
 MODE_NETWORK = "network"
+# Full low-level command map. Only the functional status modes are exposed in the
+# UI (see MODE_LABELS); the reset/boot/locate entries stay here for completeness.
 MODE_COMMANDS = {
     "cold_reset": ("0",),
     "warm_reset": ("1",),
@@ -51,16 +59,13 @@ MODE_COMMANDS = {
     "port_locate_unset": ("10", "5"),
 }
 
+# "Mode" = built-in UniFi LED status indicators (driven by the firmware). These
+# show real port state and are conceptually distinct from the Animation effects.
 MODE_LABELS = {
     MODE_NETWORK: "Network",
     "speed": "Speed",
     "poe": "PoE",
     "device_type": "Device Type",
-    "cold_reset": "Cold Reset",
-    "warm_reset": "Warm Reset",
-    "boot_done": "Boot Done",
-    "port_locate": "Port Locate",
-    "port_locate_unset": "Port Locate Unset",
 }
 
 MODE_KEYS = tuple(MODE_LABELS)
