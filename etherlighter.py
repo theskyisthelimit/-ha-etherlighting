@@ -40,6 +40,16 @@ MODES = {
     "port_locate_unset": ["10", "5"],
 }
 
+CYCLE_PATTERN_ALL = "all"
+CYCLE_PATTERN_OFFSET = "offset"
+CYCLE_PATTERN_KITT = "kitt"
+CYCLE_PATTERNS = (CYCLE_PATTERN_ALL, CYCLE_PATTERN_OFFSET, CYCLE_PATTERN_KITT)
+
+DEFAULT_CYCLE_INTERVAL = 0.2
+DEFAULT_CYCLE_BRIGHTNESS = 100
+DEFAULT_CYCLE_STEPS = 96
+DEFAULT_SCANNER_TAIL = 4
+
 GO_LAYOUT_TEMPLATE = """    <div>
       {{ range .Layout }} {{ $rows := . }}
       <div class="ports">
@@ -87,6 +97,17 @@ class Color:
 class PortColor:
     index: int
     color: Color
+
+
+@dataclass
+class AnimationSettings:
+    """Mutable animation settings read by the animation thread."""
+
+    pattern: str
+    interval_seconds: float
+    brightness: int
+    steps: int
+    scanner_tail: int
 
 
 @dataclass
@@ -207,7 +228,7 @@ class DeviceClient:
         self._animation_lock = threading.Lock()
         self._animation_stop: threading.Event | None = None
         self._animation_thread: threading.Thread | None = None
-        self._animation_pattern: str | None = None
+        self._animation_settings: AnimationSettings | None = None
 
     def connect(self) -> None:
         try:
@@ -343,61 +364,118 @@ class DeviceClient:
 
     def set_port_colors(self, port_colors: list[PortColor]) -> None:
         self.stop_color_cycle()
-        self._set_port_colors(port_colors)
+        self._set_port_colors(port_colors, force=True)
 
-    def _set_port_colors(self, port_colors: list[PortColor], reset_mode: bool = True) -> None:
+    def _set_port_colors(
+        self,
+        port_colors: list[PortColor],
+        reset_mode: bool = True,
+        force: bool = False,
+    ) -> None:
         if reset_mode:
             self.set_led_mode(0)
 
         cmds: list[str] = []
+        changed_port_colors: list[PortColor] = []
+        with self._color_lock:
+            previous_colors = {
+                port_color.index: self._last_port_colors.get(port_color.index)
+                for port_color in port_colors
+            }
+
         for port_color in port_colors:
             index = port_color.index
             color = port_color.color
-            cmds.extend(
-                [
-                    f"echo {index} r {color.r * 100} > /proc/led/led_color",
-                    f"echo {index} g {color.g * 100} > /proc/led/led_color",
-                    f"echo {index} b {color.b * 100} > /proc/led/led_color",
-                ]
-            )
+            previous = previous_colors.get(index)
+            if not force and previous == color:
+                continue
+
+            changed_port_colors.append(port_color)
+            if force or previous is None or previous.r != color.r:
+                cmds.append(f"echo {index} r {color.r * 100} > /proc/led/led_color")
+            if force or previous is None or previous.g != color.g:
+                cmds.append(f"echo {index} g {color.g * 100} > /proc/led/led_color")
+            if force or previous is None or previous.b != color.b:
+                cmds.append(f"echo {index} b {color.b * 100} > /proc/led/led_color")
 
         if cmds:
             self.exec(" && ".join(cmds))
-            self._remember_port_colors(port_colors)
+            self._remember_port_colors(changed_port_colors)
 
     def set_led_mode(self, mode: int) -> None:
         self.exec(f"echo {mode} > /proc/led/led_mode")
 
     def start_color_cycle(
         self,
-        interval_seconds: float = 0.2,
-        brightness: int = 100,
-        steps: int = 96,
-        pattern: str = "all",
+        pattern: str = CYCLE_PATTERN_ALL,
+        interval_seconds: float = DEFAULT_CYCLE_INTERVAL,
+        brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
+        steps: int = DEFAULT_CYCLE_STEPS,
+        scanner_tail: int = DEFAULT_SCANNER_TAIL,
     ) -> None:
-        if not 0.05 <= interval_seconds <= 5:
-            raise ValueError("interval must be between 0.05 and 5 seconds")
         if not 1 <= steps <= 720:
             raise ValueError("steps must be between 1 and 720")
-        if not 0 <= brightness <= 100:
-            raise ValueError("brightness must be between 0 and 100")
-        if pattern not in {"all", "offset"}:
-            raise ValueError("pattern must be either all or offset")
+        if pattern not in CYCLE_PATTERNS:
+            raise ValueError("pattern must be all, offset, or kitt")
+        if (
+            pattern in {CYCLE_PATTERN_OFFSET, CYCLE_PATTERN_KITT}
+            and not self._animation_ports()
+        ):
+            raise RuntimeError("cannot run per-port animation without a known port layout")
 
         self.stop_color_cycle()
+        settings = AnimationSettings(
+            pattern=pattern,
+            interval_seconds=self._validate_interval(interval_seconds),
+            brightness=self._validate_brightness(brightness),
+            steps=steps,
+            scanner_tail=self._validate_scanner_tail(scanner_tail),
+        )
 
         stop_event = threading.Event()
         thread = threading.Thread(
             target=self._run_color_cycle,
-            args=(stop_event, interval_seconds, brightness, steps, pattern),
+            args=(stop_event,),
             daemon=True,
             name="etherlighter-color-cycle",
         )
         with self._animation_lock:
             self._animation_stop = stop_event
             self._animation_thread = thread
-            self._animation_pattern = pattern
+            self._animation_settings = settings
         thread.start()
+
+    def update_color_cycle_settings(
+        self,
+        interval_seconds: float | None = None,
+        brightness: int | None = None,
+        scanner_tail: int | None = None,
+    ) -> None:
+        with self._animation_lock:
+            settings = self._animation_settings
+            if settings is None:
+                return
+            if interval_seconds is not None:
+                settings.interval_seconds = self._validate_interval(interval_seconds)
+            if brightness is not None:
+                settings.brightness = self._validate_brightness(brightness)
+            if scanner_tail is not None:
+                settings.scanner_tail = self._validate_scanner_tail(scanner_tail)
+
+    def _validate_interval(self, interval_seconds: float) -> float:
+        if not 0.05 <= interval_seconds <= 5:
+            raise ValueError("interval must be between 0.05 and 5 seconds")
+        return interval_seconds
+
+    def _validate_brightness(self, brightness: int) -> int:
+        if not 0 <= brightness <= 100:
+            raise ValueError("brightness must be between 0 and 100")
+        return brightness
+
+    def _validate_scanner_tail(self, scanner_tail: int) -> int:
+        if not 1 <= scanner_tail <= 8:
+            raise ValueError("scanner tail must be between 1 and 8")
+        return scanner_tail
 
     def stop_color_cycle(self) -> bool:
         with self._animation_lock:
@@ -408,7 +486,7 @@ class DeviceClient:
             with self._animation_lock:
                 self._animation_stop = None
                 self._animation_thread = None
-                self._animation_pattern = None
+                self._animation_settings = None
             return False
 
         stop_event.set()
@@ -419,7 +497,7 @@ class DeviceClient:
             if self._animation_thread is thread:
                 self._animation_stop = None
                 self._animation_thread = None
-                self._animation_pattern = None
+                self._animation_settings = None
 
         return True
 
@@ -431,35 +509,54 @@ class DeviceClient:
     def color_cycle_pattern(self) -> str | None:
         with self._animation_lock:
             thread = self._animation_thread
-            if thread is not None and thread.is_alive():
-                return self._animation_pattern
+            if (
+                thread is not None
+                and thread.is_alive()
+                and self._animation_settings is not None
+            ):
+                return self._animation_settings.pattern
             return None
 
-    def _run_color_cycle(
-        self,
-        stop_event: threading.Event,
-        interval_seconds: float,
-        brightness: int,
-        steps: int,
-        pattern: str,
-    ) -> None:
+    def _run_color_cycle(self, stop_event: threading.Event) -> None:
         try:
             self.set_led_mode(0)
             step = 0
             while not stop_event.is_set():
-                if pattern == "offset":
-                    self._set_offset_cycle_frame(step, steps)
+                settings = self._animation_settings_snapshot()
+                if settings is None:
+                    break
+                if settings.pattern == CYCLE_PATTERN_OFFSET:
+                    self._set_offset_cycle_frame(step, settings.steps, settings.brightness)
+                elif settings.pattern == CYCLE_PATTERN_KITT:
+                    self._set_kitt_cycle_frame(
+                        step, settings.scanner_tail, settings.brightness
+                    )
                 else:
-                    color = color_from_hue((step % steps) / steps)
-                    self._set_all_ports_color(color, brightness)
+                    color = color_from_hue((step % settings.steps) / settings.steps)
+                    self._set_all_ports_color(color, settings.brightness)
                     self._remember_all_ports_color(color)
                 step += 1
-                stop_event.wait(interval_seconds)
+                stop_event.wait(settings.interval_seconds)
         except Exception:
             logging.exception("color cycle failed")
             stop_event.set()
 
-    def _set_offset_cycle_frame(self, step: int, steps: int) -> None:
+    def _animation_settings_snapshot(self) -> AnimationSettings | None:
+        with self._animation_lock:
+            if self._animation_settings is None:
+                return None
+            settings = self._animation_settings
+            return AnimationSettings(
+                pattern=settings.pattern,
+                interval_seconds=settings.interval_seconds,
+                brightness=settings.brightness,
+                steps=settings.steps,
+                scanner_tail=settings.scanner_tail,
+            )
+
+    def _set_offset_cycle_frame(
+        self, step: int, steps: int, brightness: int = DEFAULT_CYCLE_BRIGHTNESS
+    ) -> None:
         ports = self._animation_ports()
         if not ports:
             raise RuntimeError("cannot run offset cycle without a known port layout")
@@ -467,11 +564,64 @@ class DeviceClient:
         port_colors = [
             PortColor(
                 index=port,
-                color=color_from_hue(((step + offset * steps / len(ports)) % steps) / steps),
+                color=scale_color(
+                    color_from_hue(((step + offset * steps / len(ports)) % steps) / steps),
+                    brightness,
+                ),
             )
             for offset, port in enumerate(ports)
         ]
-        self._set_port_colors(port_colors, reset_mode=False)
+        self._set_port_colors(port_colors, reset_mode=False, force=step == 0)
+
+    def _set_kitt_cycle_frame(
+        self,
+        step: int,
+        scanner_tail: int = DEFAULT_SCANNER_TAIL,
+        brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
+    ) -> None:
+        ports = self._animation_ports()
+        if not ports:
+            raise RuntimeError("cannot run kitt cycle without a known port layout")
+        self._set_port_colors(
+            self._kitt_port_colors(ports, step, scanner_tail, brightness),
+            reset_mode=False,
+            force=step == 0,
+        )
+
+    def _kitt_port_colors(
+        self,
+        ports: list[int],
+        step: int,
+        scanner_tail: int = DEFAULT_SCANNER_TAIL,
+        brightness: int = DEFAULT_CYCLE_BRIGHTNESS,
+    ) -> list[PortColor]:
+        scanner_tail = self._validate_scanner_tail(scanner_tail)
+        brightness = self._validate_brightness(brightness)
+        if len(ports) == 1:
+            head_index = 0
+            direction = 1
+        else:
+            period = (len(ports) - 1) * 2
+            phase = step % period
+            if phase <= len(ports) - 1:
+                head_index = phase
+                direction = 1
+            else:
+                head_index = period - phase
+                direction = -1
+
+        port_colors: list[PortColor] = []
+        for index, port in enumerate(ports):
+            distance = (head_index - index) * direction
+            if distance < 0 or distance > scanner_tail:
+                red = 0
+            elif distance == 0:
+                red = round(255 * brightness / 100)
+            else:
+                fade = (scanner_tail - distance + 1) / (scanner_tail + 1)
+                red = round(255 * brightness * fade / 100)
+            port_colors.append(PortColor(index=port, color=Color(red, 0, 0)))
+        return port_colors
 
     def _animation_ports(self) -> list[int]:
         with self._color_lock:
@@ -586,6 +736,15 @@ def color_from_hue(hue: float) -> Color:
     return Color(r=round(r * 255), g=round(g * 255), b=round(b * 255))
 
 
+def scale_color(color: Color, brightness: int) -> Color:
+    factor = brightness / 100
+    return Color(
+        r=round(color.r * factor),
+        g=round(color.g * factor),
+        b=round(color.b * factor),
+    )
+
+
 def render_layout(layout: list[list[int]] | None) -> str:
     rows: list[str] = ["    <div>"]
     for port_row in layout or []:
@@ -665,17 +824,29 @@ class EtherlighterHandler(BaseHTTPRequestHandler):
                     raise ValueError("request body must be an object")
 
                 enabled = bool(body.get("enabled", True))
-                if enabled:
-                    interval = float(body.get("interval", 0.2))
-                    brightness = int(body.get("brightness", 100))
-                    pattern = str(body.get("pattern", "all"))
-                    self.server.client.start_color_cycle(
-                        interval_seconds=interval,
-                        brightness=brightness,
-                        pattern=pattern,
-                    )
-                else:
+                if not enabled:
                     self.server.client.stop_color_cycle()
+                else:
+                    client = self.server.client
+                    interval = float(body.get("interval", DEFAULT_CYCLE_INTERVAL))
+                    brightness = int(body.get("brightness", DEFAULT_CYCLE_BRIGHTNESS))
+                    pattern = str(body.get("pattern", CYCLE_PATTERN_ALL))
+                    scanner_tail = int(body.get("scanner_tail", DEFAULT_SCANNER_TAIL))
+                    # Same pattern already running: update settings live so the
+                    # sliders take effect without restarting the animation.
+                    if client.color_cycle_pattern() == pattern:
+                        client.update_color_cycle_settings(
+                            interval_seconds=interval,
+                            brightness=brightness,
+                            scanner_tail=scanner_tail,
+                        )
+                    else:
+                        client.start_color_cycle(
+                            pattern=pattern,
+                            interval_seconds=interval,
+                            brightness=brightness,
+                            scanner_tail=scanner_tail,
+                        )
             elif path == "/api/mode":
                 if not isinstance(body, dict):
                     raise ValueError("request body must be an object")

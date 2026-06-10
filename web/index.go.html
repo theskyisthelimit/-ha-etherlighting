@@ -117,6 +117,31 @@
         color: #aaa;
         font-size: 0.85rem;
       }
+
+      .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        max-width: 22rem;
+        margin: 0 auto;
+      }
+
+      .controls label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.9rem;
+      }
+
+      .controls input[type="range"] {
+        width: 100%;
+        accent-color: var(--primary);
+      }
+
+      .controls output {
+        color: var(--primary);
+        font-weight: bold;
+      }
     </style>
     <script type="module">
       const rgb = (color) => {
@@ -155,6 +180,36 @@
       let cyclePreviewStep = 0;
       let cyclePreviewPattern = "all";
 
+      const speedSlider = document.getElementById("speed-slider");
+      const brightnessSlider = document.getElementById("brightness-slider");
+      const tailSlider = document.getElementById("tail-slider");
+
+      const debounce = (fn, ms) => {
+        let timer = null;
+        return (...args) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), ms);
+        };
+      };
+
+      // Mirrors transition_speed_to_interval() in coordinator.py.
+      const transitionSpeedToInterval = (speed) => {
+        speed = Math.max(1, Math.min(100, Math.round(speed)));
+        if (speed <= 50) {
+          return 1.0 - ((speed - 1) / 49) * 0.8;
+        }
+        return 0.2 - ((speed - 50) / 50) * 0.15;
+      };
+
+      const animationSettings = () => ({
+        interval: transitionSpeedToInterval(+speedSlider.value),
+        brightness: +brightnessSlider.value,
+        scanner_tail: +tailSlider.value,
+      });
+
+      const previewIntervalMs = () =>
+        Math.round(transitionSpeedToInterval(+speedSlider.value) * 1000);
+
       const setStatus = (message) => {
         statusLine.innerText = message;
       };
@@ -163,16 +218,53 @@
         port.style.backgroundColor = colorToCss(color);
       };
 
+      // Mirrors _kitt_port_colors() in etherlighter.py.
+      const kittPreviewColor = (offset, tail, brightness) => {
+        const n = ports.length;
+        let head;
+        let dir;
+        if (n <= 1) {
+          head = 0;
+          dir = 1;
+        } else {
+          const period = (n - 1) * 2;
+          const phase = cyclePreviewStep % period;
+          if (phase <= n - 1) {
+            head = phase;
+            dir = 1;
+          } else {
+            head = period - phase;
+            dir = -1;
+          }
+        }
+        const distance = (head - offset) * dir;
+        let red;
+        if (distance < 0 || distance > tail) {
+          red = 0;
+        } else if (distance === 0) {
+          red = Math.round((255 * brightness) / 100);
+        } else {
+          const fade = (tail - distance + 1) / (tail + 1);
+          red = Math.round((255 * brightness * fade) / 100);
+        }
+        return `rgb(${red}, 0, 0)`;
+      };
+
       const previewCycleColor = () => {
+        const { brightness, scanner_tail: tail } = animationSettings();
         ports.forEach((port, offset) => {
-          const hue =
-            cyclePreviewPattern === "offset"
-              ? (cyclePreviewStep + (offset * 360) / ports.length) % 360
-              : cyclePreviewStep;
-          const color = `hsl(${hue}, 100%, 50%)`;
-          port.style.backgroundColor = color;
+          if (cyclePreviewPattern === "kitt") {
+            port.style.backgroundColor = kittPreviewColor(offset, tail, brightness);
+          } else {
+            const hue =
+              cyclePreviewPattern === "offset"
+                ? (cyclePreviewStep * 8 + (offset * 360) / ports.length) % 360
+                : (cyclePreviewStep * 8) % 360;
+            const lightness = 50 * (brightness / 100);
+            port.style.backgroundColor = `hsl(${hue}, 100%, ${lightness}%)`;
+          }
         });
-        cyclePreviewStep = (cyclePreviewStep + 8) % 360;
+        cyclePreviewStep += 1;
       };
 
       const startCyclePreview = (pattern = "all") => {
@@ -180,13 +272,22 @@
           clearInterval(cyclePreviewTimer);
         }
         cyclePreviewPattern = pattern;
-        setStatus(
-          pattern === "offset"
-            ? "Current colors: cycling ports staggered"
-            : "Current colors: cycling all ports"
-        );
+        cyclePreviewStep = 0;
+        const statusByPattern = {
+          offset: "Current colors: cycling ports staggered",
+          kitt: "Current colors: KITT scanner",
+        };
+        setStatus(statusByPattern[pattern] || "Current colors: cycling all ports");
         previewCycleColor();
-        cyclePreviewTimer = setInterval(previewCycleColor, 200);
+        cyclePreviewTimer = setInterval(previewCycleColor, previewIntervalMs());
+      };
+
+      const restartPreviewTimer = () => {
+        if (!cyclePreviewTimer) {
+          return;
+        }
+        clearInterval(cyclePreviewTimer);
+        cyclePreviewTimer = setInterval(previewCycleColor, previewIntervalMs());
       };
 
       const stopCyclePreview = () => {
@@ -195,6 +296,33 @@
           cyclePreviewTimer = null;
         }
       };
+
+      // Push live slider changes to a running animation without restarting it.
+      const sendCycleUpdate = debounce(() => {
+        if (!cyclePreviewTimer) {
+          return;
+        }
+        postJSON("/api/cycle", {
+          enabled: true,
+          pattern: cyclePreviewPattern,
+          ...animationSettings(),
+        }).catch((error) => setStatus(`Failed: ${error.message}`));
+      }, 150);
+
+      [speedSlider, brightnessSlider, tailSlider].forEach((slider) => {
+        const output = document.getElementById(`${slider.id}-value`);
+        const sync = () => {
+          if (output) {
+            output.value = slider.value;
+          }
+        };
+        sync();
+        slider.addEventListener("input", () => {
+          sync();
+          restartPreviewTimer();
+          sendCycleUpdate();
+        });
+      });
 
       const refreshPortColors = async () => {
         stopCyclePreview();
@@ -349,9 +477,8 @@
             setStatus(enabled ? `Starting ${button.innerText}` : "Stopping cycle");
             await postJSON("/api/cycle", {
               enabled,
-              interval: 0.2,
-              brightness: 100,
               pattern,
+              ...animationSettings(),
             });
 
             if (enabled) {
@@ -436,9 +563,60 @@
       <button data-mode="cold_reset">"Cold boot"</button>
       <button data-mode="warm_reset">"Warm boot"</button>
       <button data-mode="boot_done">"Boot done"</button>
+    </div>
+
+    <hr />
+
+    <h2>Animations</h2>
+
+    <div
+      style="
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      "
+    >
       <button data-cycle="all">Cycle All</button>
       <button data-cycle="offset">Cycle Staggered</button>
+      <button data-cycle="kitt">KITT Scanner</button>
       <button class="danger" data-cycle="stop">Stop Cycle</button>
+    </div>
+
+    <div class="controls">
+      <label for="speed-slider">
+        Transition Speed <output id="speed-slider-value">50</output>
+        <input
+          type="range"
+          id="speed-slider"
+          min="1"
+          max="100"
+          step="1"
+          value="50"
+        />
+      </label>
+      <label for="brightness-slider">
+        Animation Brightness <output id="brightness-slider-value">100</output>%
+        <input
+          type="range"
+          id="brightness-slider"
+          min="0"
+          max="100"
+          step="1"
+          value="100"
+        />
+      </label>
+      <label for="tail-slider">
+        KITT Scanner Tail <output id="tail-slider-value">4</output>
+        <input
+          type="range"
+          id="tail-slider"
+          min="1"
+          max="8"
+          step="1"
+          value="4"
+        />
+      </label>
     </div>
   </body>
 </html>
