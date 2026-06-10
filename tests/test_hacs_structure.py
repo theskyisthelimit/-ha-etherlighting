@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BRAND = ROOT / "custom_components" / "etherlighter" / "brand"
+
+
+def _png_dimensions(path: Path) -> tuple[int, int]:
+    with path.open("rb") as handle:
+        header = handle.read(24)
+
+    assert header.startswith(b"\x89PNG\r\n\x1a\n")
+    return struct.unpack(">II", header[16:24])
 
 
 def test_hacs_has_single_custom_component() -> None:
@@ -37,6 +47,11 @@ def test_manifest_required_fields() -> None:
 
 
 def test_hacs_brand_icon_exists() -> None:
-    icon = ROOT / "custom_components" / "etherlighter" / "brand" / "icon.png"
-    assert icon.is_file()
-    assert icon.stat().st_size > 0
+    expected_assets = {
+        BRAND / "icon.png": (256, 256),
+        BRAND / "logo.png": (512, 512),
+    }
+    for path, dimensions in expected_assets.items():
+        assert path.is_file()
+        assert path.stat().st_size > 0
+        assert _png_dimensions(path) == dimensions
