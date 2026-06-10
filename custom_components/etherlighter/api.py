@@ -533,7 +533,7 @@ class EtherlighterClient:
             )
             for offset, port in enumerate(ports)
         ]
-        self._set_port_colors(port_colors, reset_mode=False)
+        self._set_port_colors(port_colors, reset_mode=False, force=step == 0)
 
     def _set_kitt_cycle_frame(
         self,
@@ -551,6 +551,7 @@ class EtherlighterClient:
         self._set_port_colors(
             self._kitt_port_colors(ports, step, scanner_tail, brightness),
             reset_mode=False,
+            force=step == 0,
         )
 
     def _kitt_port_colors(
@@ -591,7 +592,10 @@ class EtherlighterClient:
         return port_colors
 
     def _set_port_colors(
-        self, port_colors: list[PortColor], reset_mode: bool = True
+        self,
+        port_colors: list[PortColor],
+        reset_mode: bool = True,
+        force: bool = False,
     ) -> None:
         """Set specific ports to specific RGB colors."""
 
@@ -599,20 +603,31 @@ class EtherlighterClient:
             self.set_led_mode(0)
 
         cmds: list[str] = []
+        changed_port_colors: list[PortColor] = []
+        with self._color_lock:
+            previous_colors = {
+                port_color.index: self._last_port_colors.get(port_color.index)
+                for port_color in port_colors
+            }
+
         for port_color in port_colors:
             index = port_color.index
             color = port_color.color
-            cmds.extend(
-                [
-                    f"echo {index} r {color.r * 100} > /proc/led/led_color",
-                    f"echo {index} g {color.g * 100} > /proc/led/led_color",
-                    f"echo {index} b {color.b * 100} > /proc/led/led_color",
-                ]
-            )
+            previous = previous_colors.get(index)
+            if not force and previous == color:
+                continue
+
+            changed_port_colors.append(port_color)
+            if force or previous is None or previous.r != color.r:
+                cmds.append(f"echo {index} r {color.r * 100} > /proc/led/led_color")
+            if force or previous is None or previous.g != color.g:
+                cmds.append(f"echo {index} g {color.g * 100} > /proc/led/led_color")
+            if force or previous is None or previous.b != color.b:
+                cmds.append(f"echo {index} b {color.b * 100} > /proc/led/led_color")
 
         if cmds:
             self.exec(" && ".join(cmds))
-            self._remember_port_colors(port_colors)
+            self._remember_port_colors(changed_port_colors)
 
     def _animation_ports(self) -> list[int]:
         """Return the best available list of ports for animations."""

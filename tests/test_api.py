@@ -169,6 +169,24 @@ def test_kitt_cycle_frame_respects_brightness() -> None:
     ]
 
 
+def test_kitt_cycle_frame_only_updates_changed_channels_after_first_frame() -> None:
+    client = FakeClient()
+
+    client._set_kitt_cycle_frame(step=0, scanner_tail=2)
+    first_frame_command = client.commands[-1]
+    assert first_frame_command.count("/proc/led/led_color") == 12
+
+    client.commands.clear()
+    client._set_kitt_cycle_frame(step=1, scanner_tail=2)
+    second_frame_command = client.commands[-1]
+
+    assert second_frame_command.count("/proc/led/led_color") == 2
+    assert "echo 1 r 17000" in second_frame_command
+    assert "echo 2 r 25500" in second_frame_command
+    assert " g " not in second_frame_command
+    assert " b " not in second_frame_command
+
+
 def test_animation_settings_update_live_values() -> None:
     client = FakeClient()
     client._animation_settings = AnimationSettings(
