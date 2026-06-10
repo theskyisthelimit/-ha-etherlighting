@@ -69,23 +69,6 @@
       "scanner_tail": {
         "name": "Scanner Tail"
       }
-    },
-    "button": {
-      "network_standard": {
-        "name": "Network Standard"
-      },
-      "cycle_all": {
-        "name": "Cycle All"
-      },
-      "cycle_staggered": {
-        "name": "Cycle Staggered"
-      },
-      "kitt_scanner": {
-        "name": "KITT Scanner"
-      },
-      "stop_cycle": {
-        "name": "Stop Cycle"
-      }
     }
   },
   "services": {

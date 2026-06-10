@@ -21,7 +21,6 @@ from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity_platform import EntityPlatform
 
 from custom_components.etherlighter.api import DeviceInfo
-from custom_components.etherlighter.button import BUTTONS, BUTTON_NAMES, EtherlighterButton
 from custom_components.etherlighter.const import (
     ANIMATION_LABELS,
     CYCLE_PATTERN_KITT,
@@ -119,15 +118,6 @@ def test_select_entity_has_name_unique_id_and_device_info() -> None:
     assert entity.device_info["connections"] == {
         (CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff")
     }
-
-
-def test_button_entities_have_names_and_unique_ids() -> None:
-    coordinator = FakeCoordinator()
-
-    for description in BUTTONS:
-        entity = EtherlighterButton(coordinator, description)
-        assert entity.name == BUTTON_NAMES[description.key]
-        assert entity.unique_id == f"aa:bb:cc:dd:ee:ff_{description.key}"
 
 
 def test_animation_select_starts_kitt() -> None:
@@ -229,7 +219,6 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
                         EtherlighterAnimationSelect(coordinator),
                     ],
                 ),
-                ("button", [EtherlighterButton(coordinator, item) for item in BUTTONS]),
                 ("light", [EtherlighterLight(coordinator)]),
                 (
                     "number",
@@ -255,13 +244,6 @@ def test_entities_register_with_home_assistant_device_registry() -> None:
             assert created["select"] == [
                 "select.uswpromax16_animation",
                 "select.uswpromax16_mode",
-            ]
-            assert created["button"] == [
-                "button.uswpromax16_cycle_all",
-                "button.uswpromax16_cycle_staggered",
-                "button.uswpromax16_kitt_scanner",
-                "button.uswpromax16_network_standard",
-                "button.uswpromax16_stop_cycle",
             ]
             assert created["light"] == ["light.uswpromax16_all_ports"]
             assert created["number"] == [
