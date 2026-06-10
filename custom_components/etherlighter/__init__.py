@@ -89,9 +89,8 @@ async def async_setup_entry(hass, entry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(
-        entry, [Platform.SELECT, Platform.BUTTON]
+        entry, [Platform.SELECT, Platform.BUTTON, Platform.LIGHT]
     )
     return True
 
@@ -102,15 +101,9 @@ async def async_unload_entry(hass, entry) -> bool:
     from homeassistant.const import Platform
 
     unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, [Platform.SELECT, Platform.BUTTON]
+        entry, [Platform.SELECT, Platform.BUTTON, Platform.LIGHT]
     )
     if unload_ok:
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await hass.async_add_executor_job(coordinator.api.close)
     return unload_ok
-
-
-async def _async_reload_entry(hass, entry) -> None:
-    """Reload an Etherlighter config entry."""
-
-    await hass.config_entries.async_reload(entry.entry_id)

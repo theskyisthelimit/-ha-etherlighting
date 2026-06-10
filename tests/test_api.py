@@ -136,6 +136,15 @@ def test_all_ports_color_command() -> None:
     assert client.commands == ["echo 'FF 00 7F 80' > /proc/led/led_all_port_code"]
 
 
+def test_static_color_stops_cycle_and_sets_led_mode() -> None:
+    client = FakeClient()
+    client.set_static_color(Color(1, 2, 3), 75)
+    assert client.commands == [
+        "echo 0 > /proc/led/led_mode",
+        "echo '01 02 03 75' > /proc/led/led_all_port_code",
+    ]
+
+
 def test_offset_cycle_requires_known_ports() -> None:
     client = FakeClient()
     client._known_ports = []

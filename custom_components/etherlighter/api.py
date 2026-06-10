@@ -300,6 +300,19 @@ class EtherlighterClient:
 
         self.exec(f"echo {mode} > /proc/led/led_mode")
 
+    def set_static_color(
+        self, color: Color, brightness: int = DEFAULT_CYCLE_BRIGHTNESS
+    ) -> None:
+        """Set all ports to one static RGB color."""
+
+        if not 0 <= brightness <= 100:
+            raise EtherlighterError("Brightness must be between 0 and 100")
+
+        self.stop_color_cycle()
+        self.set_led_mode(0)
+        self._set_all_ports_color(color, brightness)
+        self._remember_all_ports_color(color)
+
     def start_color_cycle(
         self,
         pattern: str = CYCLE_PATTERN_ALL,

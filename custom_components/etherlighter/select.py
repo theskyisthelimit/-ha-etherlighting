@@ -31,7 +31,7 @@ class EtherlighterModeSelect(EtherlighterEntity, SelectEntity):
     _attr_icon = "mdi:led-strip-variant"
 
     def __init__(self, coordinator: EtherlighterDataUpdateCoordinator) -> None:
-        super().__init__(coordinator, "mode")
+        super().__init__(coordinator, "mode", "Mode")
         self._attr_options = list(MODE_LABELS.values())
 
     @property

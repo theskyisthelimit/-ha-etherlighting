@@ -39,6 +39,9 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
         self.api = api
         self.current_mode: str | None = None
         self.current_cycle_pattern: str | None = None
+        self.current_rgb_color: tuple[int, int, int] = (255, 255, 255)
+        self.current_brightness: int = 255
+        self.light_is_on = False
 
     async def _async_update_data(self) -> DeviceInfo:
         try:
@@ -56,6 +59,7 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
         await self.hass.async_add_executor_job(self.api.set_mode, mode)
         self.current_mode = mode
         self.current_cycle_pattern = None
+        self.light_is_on = False
         self.async_set_updated_data(self.data)
 
     async def async_start_cycle(
@@ -71,6 +75,7 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
         )
         self.current_mode = None
         self.current_cycle_pattern = pattern
+        self.light_is_on = True
         self.async_set_updated_data(self.data)
 
     async def async_stop_cycle(self) -> None:
@@ -78,4 +83,24 @@ class EtherlighterDataUpdateCoordinator(DataUpdateCoordinator[DeviceInfo]):
 
         await self.hass.async_add_executor_job(self.api.stop_color_cycle)
         self.current_cycle_pattern = None
+        self.async_set_updated_data(self.data)
+
+    async def async_set_static_color(
+        self, rgb_color: tuple[int, int, int], brightness: int
+    ) -> None:
+        """Set all device ports to one static color."""
+
+        from .api import Color
+
+        percent_brightness = round(brightness * 100 / 255)
+        await self.hass.async_add_executor_job(
+            self.api.set_static_color,
+            Color(*rgb_color),
+            percent_brightness,
+        )
+        self.current_mode = None
+        self.current_cycle_pattern = None
+        self.current_rgb_color = rgb_color
+        self.current_brightness = brightness
+        self.light_is_on = brightness > 0
         self.async_set_updated_data(self.data)

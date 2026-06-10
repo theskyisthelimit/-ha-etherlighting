@@ -51,6 +51,11 @@
         "name": "Mode"
       }
     },
+    "light": {
+      "all_ports_light": {
+        "name": "All Ports"
+      }
+    },
     "button": {
       "network_standard": {
         "name": "Network Standard"

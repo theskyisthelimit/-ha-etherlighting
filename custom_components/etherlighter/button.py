@@ -42,6 +42,13 @@ BUTTONS = (
     ),
 )
 
+BUTTON_NAMES = {
+    "network": "Network Standard",
+    "cycle_all": "Cycle All",
+    "cycle_offset": "Cycle Staggered",
+    "stop_cycle": "Stop Cycle",
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -64,7 +71,7 @@ class EtherlighterButton(EtherlighterEntity, ButtonEntity):
         coordinator: EtherlighterDataUpdateCoordinator,
         description: ButtonEntityDescription,
     ) -> None:
-        super().__init__(coordinator, description.key)
+        super().__init__(coordinator, description.key, BUTTON_NAMES[description.key])
         self.entity_description = description
 
     async def async_press(self) -> None:
