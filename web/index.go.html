@@ -112,16 +112,31 @@
         font-size: 0.8rem;
         user-select: none;
       }
+
+      .status-line {
+        color: #aaa;
+        font-size: 0.85rem;
+      }
     </style>
     <script type="module">
-      const rainbow = (n) =>
-        Array.from({ length: n }, (_, i) => {
-          const f = 360 / n;
-          const h = (f * i) % 360;
-          return `hsl(${h}, 100%, 50%)`;
-        });
-
       const rgb = (color) => {
+        if (color.startsWith("#")) {
+          return {
+            r: parseInt(color.slice(1, 3), 16),
+            g: parseInt(color.slice(3, 5), 16),
+            b: parseInt(color.slice(5, 7), 16),
+          };
+        }
+
+        const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+          return {
+            r: +match[1],
+            g: +match[2],
+            b: +match[3],
+          };
+        }
+
         const [r, g, b] = color
           .slice(4, -1)
           .split(",")
@@ -129,8 +144,106 @@
         return { r, g, b: b };
       };
 
+      const colorToCss = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
+
       const selectedPorts = () =>
         document.querySelectorAll(".port[aria-selected]");
+
+      const ports = document.querySelectorAll(".port");
+      let statusLine = document.getElementById("current-colors-status");
+      let cyclePreviewTimer = null;
+      let cyclePreviewStep = 0;
+      let cyclePreviewPattern = "all";
+
+      const setStatus = (message) => {
+        statusLine.innerText = message;
+      };
+
+      const setPortColor = (port, color) => {
+        port.style.backgroundColor = colorToCss(color);
+      };
+
+      const previewCycleColor = () => {
+        ports.forEach((port, offset) => {
+          const hue =
+            cyclePreviewPattern === "offset"
+              ? (cyclePreviewStep + (offset * 360) / ports.length) % 360
+              : cyclePreviewStep;
+          const color = `hsl(${hue}, 100%, 50%)`;
+          port.style.backgroundColor = color;
+        });
+        cyclePreviewStep = (cyclePreviewStep + 8) % 360;
+      };
+
+      const startCyclePreview = (pattern = "all") => {
+        if (cyclePreviewTimer) {
+          clearInterval(cyclePreviewTimer);
+        }
+        cyclePreviewPattern = pattern;
+        setStatus(
+          pattern === "offset"
+            ? "Current colors: cycling ports staggered"
+            : "Current colors: cycling all ports"
+        );
+        previewCycleColor();
+        cyclePreviewTimer = setInterval(previewCycleColor, 200);
+      };
+
+      const stopCyclePreview = () => {
+        if (cyclePreviewTimer) {
+          clearInterval(cyclePreviewTimer);
+          cyclePreviewTimer = null;
+        }
+      };
+
+      const refreshPortColors = async () => {
+        stopCyclePreview();
+        setStatus("Current colors: loading");
+        ports.forEach((port) => {
+          port.style.backgroundColor = "#222";
+        });
+
+        try {
+          const response = await fetch("/api/port-colors");
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const snapshot = await response.json();
+          snapshot.colors.forEach(({ index, color }) => {
+            const port = document.querySelector(`.port[data-index="${index}"]`);
+            if (port) {
+              setPortColor(port, color);
+            }
+          });
+
+          if (snapshot.source === "device") {
+            setStatus("Current colors: device");
+          } else if (snapshot.source === "cycle") {
+            startCyclePreview(snapshot.pattern || "all");
+          } else if (snapshot.source === "session") {
+            setStatus("Current colors: last applied in this session");
+          } else {
+            setStatus("Current colors: unavailable");
+          }
+        } catch (error) {
+          setStatus(`Current colors: failed (${error.message})`);
+        }
+      };
+
+      const postJSON = async (url, data) => {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+      };
 
       let colorPicker = document.getElementById("color-picker");
       colorPicker.addEventListener("input", ({ target }) => {
@@ -181,7 +294,6 @@
         updateSelector();
       };
 
-      const ports = document.querySelectorAll(".port");
       ports.forEach((port) => {
         port.addEventListener("click", () => togglePort(port));
         port.addEventListener(
@@ -189,32 +301,27 @@
           (event) => event.key === " " && togglePort(port)
         );
       });
-      rainbow(ports.length).forEach((color, i) => {
-        ports[i].style.backgroundColor = color;
-      });
+      refreshPortColors();
 
       document.getElementById("apply").addEventListener("click", async () => {
-        const data = Array.from(ports).map((port) => ({
+        const chosenPorts = Array.from(selectedPorts());
+        if (chosenPorts.length === 0) {
+          setStatus("Select at least one port first");
+          return;
+        }
+
+        const data = chosenPorts.map((port) => ({
           index: +port.dataset.index,
           color: rgb(port.style.backgroundColor),
         }));
 
-        if (!confirm("Apply the colors to the selected device ports?")) {
-          return;
-        }
-
-        const response = await fetch("/api/port-colors", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        });
-
-        if (response.ok) {
-          alert("Sent to device!");
-        } else {
-          alert(`Failed: ${await response.text()}`);
+        try {
+          setStatus("Sending selected port colors");
+          await postJSON("/api/port-colors", data);
+          stopCyclePreview();
+          await refreshPortColors();
+        } catch (error) {
+          setStatus(`Failed: ${error.message}`);
         }
       });
 
@@ -222,22 +329,39 @@
         button.addEventListener("click", async () => {
           const mode = button.dataset.mode;
 
-          if (!confirm(`Set the mode to ${button.innerText}?`)) {
-            return;
+          try {
+            setStatus(`Setting mode: ${button.innerText}`);
+            await postJSON("/api/mode", { mode });
+            stopCyclePreview();
+            await refreshPortColors();
+          } catch (error) {
+            setStatus(`Failed: ${error.message}`);
           }
+        });
+      });
 
-          const response = await fetch("/api/mode", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ mode }),
-          });
+      document.querySelectorAll("button[data-cycle]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const pattern = button.dataset.cycle;
+          const enabled = pattern !== "stop";
 
-          if (response.ok) {
-            alert("Sent to device!");
-          } else {
-            alert(`Failed: ${await response.text()}`);
+          try {
+            setStatus(enabled ? `Starting ${button.innerText}` : "Stopping cycle");
+            await postJSON("/api/cycle", {
+              enabled,
+              interval: 0.2,
+              brightness: 100,
+              pattern,
+            });
+
+            if (enabled) {
+              startCyclePreview(pattern);
+            } else {
+              stopCyclePreview();
+              await refreshPortColors();
+            }
+          } catch (error) {
+            setStatus(`Failed: ${error.message}`);
           }
         });
       });
@@ -258,6 +382,7 @@
     <hr />
 
     <h2>Port Colors</h2>
+    <div class="status-line" id="current-colors-status">Current colors: loading</div>
 
     <div>
       {{ range .Layout }} {{ $rows := . }}
@@ -305,12 +430,15 @@
       "
     >
       <button data-mode="speed">Speed</button>
-      <button data-mode="network">Network</button>
+      <button data-mode="network">Network Standard</button>
       <button data-mode="poe">PoE</button>
       <button data-mode="device_type">Device Type</button>
       <button data-mode="cold_reset">"Cold boot"</button>
       <button data-mode="warm_reset">"Warm boot"</button>
       <button data-mode="boot_done">"Boot done"</button>
+      <button data-cycle="all">Cycle All</button>
+      <button data-cycle="offset">Cycle Staggered</button>
+      <button class="danger" data-cycle="stop">Stop Cycle</button>
     </div>
   </body>
 </html>

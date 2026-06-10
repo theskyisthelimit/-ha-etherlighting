@@ -1,0 +1,58 @@
+set_mode:
+  target:
+    entity:
+      integration: etherlighter
+      domain: select
+  fields:
+    mode:
+      required: true
+      selector:
+        select:
+          options:
+            - network
+            - speed
+            - poe
+            - device_type
+            - cold_reset
+            - warm_reset
+            - boot_done
+            - port_locate
+            - port_locate_unset
+
+start_cycle:
+  target:
+    entity:
+      integration: etherlighter
+      domain: select
+  fields:
+    pattern:
+      required: true
+      selector:
+        select:
+          options:
+            - all
+            - offset
+    interval:
+      default: 0.2
+      selector:
+        number:
+          min: 0.05
+          max: 5
+          step: 0.05
+          mode: box
+          unit_of_measurement: s
+    brightness:
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+
+stop_cycle:
+  target:
+    entity:
+      integration: etherlighter
+      domain: select

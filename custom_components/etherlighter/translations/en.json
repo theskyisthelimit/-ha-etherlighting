@@ -1,0 +1,103 @@
+{
+  "title": "Etherlighter",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Etherlighter device",
+        "description": "Enter the UniFi switch SSH credentials from Device Authentication.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Etherlighter device",
+        "description": "Update the UniFi switch SSH connection details.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Etherlighter device",
+        "description": "Confirm the UniFi switch SSH credentials and trust the current SSH host key.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the device over SSH.",
+      "host_key_mismatch": "The SSH host key changed. Reconfigure only if you trust this device.",
+      "invalid_auth": "The SSH username or password is invalid.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This Etherlighter device is already configured.",
+      "reauth_successful": "Etherlighter device re-authentication completed.",
+      "reconfigure_successful": "Etherlighter device reconfiguration completed."
+    }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Mode"
+      }
+    },
+    "button": {
+      "network_standard": {
+        "name": "Network Standard"
+      },
+      "cycle_all": {
+        "name": "Cycle All"
+      },
+      "cycle_staggered": {
+        "name": "Cycle Staggered"
+      },
+      "stop_cycle": {
+        "name": "Stop Cycle"
+      }
+    }
+  },
+  "services": {
+    "set_mode": {
+      "name": "Set mode",
+      "description": "Set a predefined Etherlighting mode.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "The predefined Etherlighting mode to activate."
+        }
+      }
+    },
+    "start_cycle": {
+      "name": "Start color cycle",
+      "description": "Start an Etherlighting color cycle animation.",
+      "fields": {
+        "pattern": {
+          "name": "Pattern",
+          "description": "Use all for one shared color or offset for staggered per-port colors."
+        },
+        "interval": {
+          "name": "Interval",
+          "description": "Seconds between animation frames."
+        },
+        "brightness": {
+          "name": "Brightness",
+          "description": "LED brightness from 0 to 100."
+        }
+      }
+    },
+    "stop_cycle": {
+      "name": "Stop color cycle",
+      "description": "Stop the active Etherlighting color cycle animation."
+    }
+  }
+}

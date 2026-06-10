@@ -1,0 +1,13 @@
+{
+  "services": {
+    "set_mode": {
+      "service": "mdi:led-strip-variant"
+    },
+    "start_cycle": {
+      "service": "mdi:palette"
+    },
+    "stop_cycle": {
+      "service": "mdi:stop-circle-outline"
+    }
+  }
+}
