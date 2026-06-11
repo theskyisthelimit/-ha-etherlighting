@@ -45,10 +45,9 @@ ANIMATION_KEYS = tuple(ANIMATION_LABELS)
 ANIMATION_KEY_BY_LABEL = {label: key for key, label in ANIMATION_LABELS.items()}
 
 MODE_NETWORK = "network"
-MODE_WARM_RESET = "warm_reset"
 MODE_COMMANDS = {
     "cold_reset": ("0",),
-    MODE_WARM_RESET: ("1",),
+    "warm_reset": ("1",),
     "boot_done": ("2",),
     "speed": ("10", "0"),
     MODE_NETWORK: ("10", "1"),
@@ -67,7 +66,7 @@ MODE_LABELS = {
     "poe": "PoE",
     "device_type": "Device Type",
     "cold_reset": "Cold Reset",
-    MODE_WARM_RESET: "Warm Reset",
+    "warm_reset": "Warm Reset",
     "boot_done": "Boot Done",
     "port_locate": "Port Locate",
     "port_locate_unset": "Port Locate Unset",

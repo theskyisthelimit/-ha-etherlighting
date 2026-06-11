@@ -17,6 +17,7 @@ import re
 import signal
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -542,6 +543,7 @@ class DeviceClient:
             self.set_led_mode(0)
             step = 0
             while not stop_event.is_set():
+                frame_started = time.monotonic()
                 settings = self._animation_settings_snapshot()
                 if settings is None:
                     break
@@ -556,7 +558,11 @@ class DeviceClient:
                     self._set_all_ports_color(color, settings.brightness)
                     self._remember_all_ports_color(color)
                 step += 1
-                stop_event.wait(settings.interval_seconds)
+                # Aim for interval_seconds per frame: subtract the time the SSH
+                # writes took, otherwise slow devices add it on top and the
+                # transition-speed control barely changes the visible pace.
+                elapsed = time.monotonic() - frame_started
+                stop_event.wait(max(0.0, settings.interval_seconds - elapsed))
         except Exception:
             logging.exception("color cycle failed")
             stop_event.set()

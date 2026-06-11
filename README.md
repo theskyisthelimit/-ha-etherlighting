@@ -35,8 +35,6 @@ This project is independent, unofficial, and not affiliated with Ubiquiti.
   `Off`, `Static Rainbow` (a frozen per-port rainbow), `Cycle All`, and
   `Cycle Staggered`.
 - RGB light entity for setting one static color on all ports.
-- `Breathing Effect` switch to toggle the built-in white breathing animation
-  (the warm-reset effect) on and off.
 - Number controls for transition speed and animation brightness.
 - `Stop Cycle` button to stop the active animation in one tap.
 - Home Assistant actions for scripts, scenes, dashboards, and automations.
@@ -98,9 +96,8 @@ After setup, Etherlighter creates entities similar to:
 | --- | --- |
 | `select.etherlighter_mode` | Pick a built-in UniFi LED mode (status indicators plus the native cold/warm reset animations). |
 | `select.etherlighter_animation` | Pick a decorative effect (`Off`, `Static Rainbow`, `Cycle All`, `Cycle Staggered`). |
-| `switch.etherlighter_breathing_effect` | Toggle the built-in white breathing effect (warm reset). |
 | `light.etherlighter_all_ports` | Set one static RGB color on all ports. |
-| `number.etherlighter_transition_speed` | Adjust animation speed from 1 to 100. |
+| `number.etherlighter_transition_speed` | Adjust the pace of `Cycle All`/`Cycle Staggered` (live or for the next start). Has no effect on static effects or firmware modes. |
 | `number.etherlighter_animation_brightness` | Adjust animation brightness from 0 to 100 percent. |
 | `button.etherlighter_stop_cycle` | Stop the active animation. |
 
